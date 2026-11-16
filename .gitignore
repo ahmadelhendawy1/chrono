@@ -1,0 +1,6 @@
+node_modules/
+dist/
+out/
+*-win32-x64/
+*.exe
+*.log

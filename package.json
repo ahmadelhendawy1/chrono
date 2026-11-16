@@ -1,0 +1,23 @@
+{
+  "name": "chrono",
+  "productName": "Chrono",
+  "version": "1.2.0",
+  "description": "Chrono - desktop widget bar: weather, clocks, calendar, calculator, world time, sticky notes and prayer times.",
+  "main": "main.js",
+  "author": "AI4EduTech",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "test": "node test/logic.test.js",
+    "package:win": "node scripts/package-win.js",
+    "installer:win": "node scripts/make-installer.js"
+  },
+  "dependencies": {
+    "adhan": "^4.4.6"
+  },
+  "devDependencies": {
+    "@electron/packager": "^20.3.0",
+    "electron": "^33.4.11",
+    "resedit": "^3.1.0"
+  }
+}

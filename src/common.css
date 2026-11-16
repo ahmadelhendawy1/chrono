@@ -1,0 +1,66 @@
+/* Chrono – shared styles for widget windows, the bar and the pop-out note. */
+:root {
+  --font: 'Segoe UI', 'Segoe UI Variable', Tahoma, 'Noto Sans Arabic', system-ui, sans-serif;
+  --a: 0.92;
+  --txt: #fff;
+  --txt2: rgba(255, 255, 255, .68);
+  --line: rgba(255, 255, 255, .16);
+  --chip: rgba(255, 255, 255, .10);
+  --chip-h: rgba(255, 255, 255, .20);
+  --accent: #7cc4ff;
+  --card: linear-gradient(165deg, rgba(34, 70, 128, var(--a)) 0%, rgba(12, 28, 62, var(--a)) 100%);
+}
+body[data-theme='dark'] { --card: linear-gradient(165deg, rgba(40, 42, 50, var(--a)), rgba(18, 19, 24, var(--a))); --accent: #8ab4ff; }
+body[data-theme='light'] {
+  --txt: #14213d; --txt2: rgba(20, 33, 61, .62); --line: rgba(20, 33, 61, .14);
+  --chip: rgba(20, 33, 61, .07); --chip-h: rgba(20, 33, 61, .14); --accent: #1769d6;
+  --card: linear-gradient(165deg, rgba(255, 255, 255, var(--a)), rgba(226, 233, 245, var(--a)));
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
+body { font-family: var(--font); color: var(--txt); user-select: none; -webkit-user-select: none; font-size: 14px; }
+body[dir='rtl'] { direction: rtl; }
+button, input, select, textarea { font: inherit; color: inherit; }
+svg.ic { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+#root { padding: 10px; width: max-content; }
+body.bar #root { width: 100%; padding: 10px; }
+body.bar { overflow: hidden; }
+
+/* ----- card chrome ----- */
+.card {
+  position: relative; border-radius: 20px; overflow: hidden; background: var(--card); color: var(--txt);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .42), inset 0 0 0 1px var(--line);
+  -webkit-app-region: drag;
+}
+.card::before { /* glossy sheen like the old HD widgets */
+  content: ''; position: absolute; inset: 0 0 52% 0; pointer-events: none; z-index: 0;
+  background: linear-gradient(180deg, rgba(255, 255, 255, .16), rgba(255, 255, 255, 0));
+}
+body[data-theme='light'] .card::before { background: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0)); }
+.card > * { position: relative; z-index: 1; }
+body.locked .card, body.bar .card { -webkit-app-region: no-drag; }
+button, input, select, textarea, .nodrag, .scroll { -webkit-app-region: no-drag; }
+
+.tools { position: absolute; top: 8px; z-index: 5; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; inset-inline-end: 8px; }
+.card:hover .tools, .holder:hover .tools { opacity: 1; }
+.tools button { width: 24px; height: 24px; display: grid; place-items: center; border-radius: 8px; border: 0; cursor: pointer; background: rgba(0, 0, 0, .28); color: #fff; padding: 0; }
+.tools button:hover { background: rgba(0, 0, 0, .5); }
+.title { font-size: 11px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--txt2); }
+.muted { color: var(--txt2); }
+.btn { border: 0; border-radius: 10px; background: var(--chip); padding: 6px 10px; cursor: pointer; }
+.btn:hover { background: var(--chip-h); }
+.row { display: flex; align-items: center; }
+.sp { flex: 1; }
+
+/* ----- bar ----- */
+.holder { position: relative; margin-bottom: 4px; }
+.barTop { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 6px; -webkit-app-region: no-drag; }
+.barTop .title { color: #fff; text-shadow: 0 1px 4px #000a; }
+.barTop button { border: 0; background: rgba(0, 0, 0, .35); color: #fff; border-radius: 8px; width: 26px; height: 26px; cursor: pointer; display: grid; place-items: center; padding: 0; margin-inline-start: 4px; }
+.barTop button:hover { background: rgba(0, 0, 0, .55); }
+#barScroll { height: 100vh; overflow-y: auto; overflow-x: hidden; padding-bottom: 20px; }
+#barScroll::-webkit-scrollbar { width: 6px; } #barScroll::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .3); border-radius: 6px; }
+body.collapsed #barScroll { display: none; }
+#handle { display: none; }
+body.collapsed #handle { display: grid; position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: 0; width: 26px; height: 78px; place-items: center; border-radius: 12px; border: 0; background: var(--card); box-shadow: 0 4px 14px #0008, inset 0 0 0 1px var(--line); color: #fff; cursor: pointer; padding: 0; --a: .95; }
