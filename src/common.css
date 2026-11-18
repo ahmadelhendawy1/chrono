@@ -89,3 +89,6 @@ body.bar.side-left .barTop { padding-left: 0; }
 body.bar.side-right.collapsed #handle { left: auto; right: 0; inset-inline-start: auto; border-radius: 12px 0 0 12px; }
 body.bar.side-left.collapsed #handle { right: auto; left: 0; inset-inline-start: auto; border-radius: 0 12px 12px 0; }
 .barTop button.pinBtn.on { background: rgba(255, 196, 0, .85); color: #2b2410; }
+body.bar.side-right .barTop { margin-left: auto; margin-right: 0; }
+body.bar.side-left .barTop { margin-right: auto; margin-left: 0; }
+.wPanel { min-width: 0; }

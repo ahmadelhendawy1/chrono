@@ -1,6 +1,6 @@
-# Chrono 1.3
+# Chrono 1.4
 
-Desktop widget bar for Windows: weather, analog and digital clocks, calendar, calculator, world time, sticky notes and prayer times. English / Arabic per widget.
+Desktop widget bar for Windows: weather, analog and digital clocks, calendar, alarm clock, calculator, world time, sticky notes and prayer times. English / Arabic per widget.
 
 **[⬇ Download the latest Chrono installer](https://github.com/ahmadelhendawy1/chrono/releases/latest)** · [All releases](https://github.com/ahmadelhendawy1/chrono/releases)
 
@@ -17,6 +17,9 @@ Download **Chrono-Setup-x.y.z.exe** from the [latest release](https://github.com
 Windows may show a SmartScreen warning because the installer is not code-signed: click **More info → Run anyway**.
 
 ## Use
+- **Alarm clock (new in 1.4):** phone-style alarms with repeat days, a label, built-in tones or your own music file, rising volume and snooze. When an alarm goes off, a banner pops up above the clock in the taskbar (Stop / Snooze) and a Windows notification appears. Alarms ring as long as Chrono is running, even when the widget is hidden.
+- **Floating sticky notes (new in 1.4):** Windows 7 style notes that live on the desktop: resizable, 6 colours (right-click), + for a new note, × to delete, a pin to keep one on top, and Ctrl+B / I / U / T formatting. Create one from the tray menu or the notes widget.
+- **Calculator (new in 1.4):** memory keys (MC MR M+ M− MS), a history of every calculation, and an **Items × Price** tab for shopping lists or invoices (quantity × price per line, running total, copy, save to history).
 - **Pin button (new in 1.3):** the pin at the top of the sidebar keeps Chrono on screen (pinned, the default). Unpin it and Chrono hides by itself, then slides back out when you push the mouse to the right edge of the screen (or left, if you choose). The sidebar sits flush against the screen edge with no gap.
 - **Widget switches (new in 1.3):** the grid button at the top of the sidebar opens an on/off switch for every widget, so a widget you closed with its X comes back with one click. The same switches are in the tray menu.
 - Chrono lives in the system tray. Left-click pops the widgets out / hides them; right-click opens the menu (widget switches, layout, lock, always-on-top, start with Windows, settings).

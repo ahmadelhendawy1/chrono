@@ -8,14 +8,16 @@
   let s = await api.getSettings();
 
   const mem = {};
-  const subs = { weather: new Set(), weatherError: new Set(), notes: new Set() };
+  const subs = { weather: new Set(), weatherError: new Set(), notes: new Set(), calc: new Set(), alarms: new Set() };
   api.onWeather((d) => subs.weather.forEach((f) => f(d)));
   api.onWeatherError((e) => subs.weatherError.forEach((f) => f(e)));
   api.onNotes((l) => subs.notes.forEach((f) => f(l)));
+  if (api.onCalc) api.onCalc((d) => subs.calc.forEach((f) => f(d)));
+  if (api.onAlarms) api.onAlarms((d) => subs.alarms.forEach((f) => f(d)));
 
   let mounted = []; // [{ cleanups }]
   let panelOpen = false; // bar: the widget on/off panel survives re-renders
-  const ALL_WIDGETS = ['analog', 'weather', 'prayer', 'calendar', 'digital', 'world', 'notes', 'calc'];
+  const ALL_WIDGETS = ['analog', 'weather', 'prayer', 'calendar', 'digital', 'world', 'alarm', 'notes', 'calc'];
   const LANG_WIDGETS = ['weather', 'prayer', 'calendar', 'analog', 'digital', 'world'];
   function langFor(id) { const o = (s.widgetLang || {})[id]; return o === 'ar' || o === 'en' ? o : s.lang; }
   function makeCtx(id) {
@@ -46,6 +48,7 @@
     into.dir = ctx.lang === 'ar' ? 'rtl' : 'ltr';
     try {
       if (id === 'note') window.Widgets.noteWindow(into, ctx, q.get('id'));
+      else if (id === 'ring') window.Widgets.ringWindow(into, ctx);
       else window.Widgets[id](into, ctx);
     } catch (e) {
       console.error('widget failed', id, e);
@@ -59,6 +62,8 @@
     applyBody();
     if (page === 'widget') {
       mountWidget(q.get('w'), root);
+    } else if (page === 'ring') {
+      mountWidget('ring', root);
     } else if (page === 'note') {
       mountWidget('note', root);
     } else {
@@ -106,8 +111,18 @@
     if (fitObserver) fitObserver.disconnect();
     if (fitHandler) window.removeEventListener('resize', fitHandler);
     inner.style.zoom = '1';
-    if (!s.barAutoFit) return;
     let cur = 1;
+    // keep the "Chrono" header (and the widgets panel) exactly as wide as the widget column under it
+    const alignTop = () => {
+      const cards = [...inner.querySelectorAll('.slot > *')];
+      const w = cards.length ? Math.max(...cards.map((c) => c.getBoundingClientRect().width)) : 0;
+      const width = Math.round(Math.max(w || 340 * cur, 200));
+      scroll.querySelectorAll('.barTop, .wPanel').forEach((el) => { el.style.width = width + 'px'; el.style.boxSizing = 'border-box'; });
+    };
+    if (!s.barAutoFit) {
+      const ro = new ResizeObserver(() => requestAnimationFrame(alignTop)); ro.observe(inner);
+      fitObserver = ro; alignTop(); return;
+    }
     const apply = () => {
       const natural = inner.getBoundingClientRect().height / cur;
       const topEl = scroll.firstChild;
@@ -115,6 +130,7 @@
       const avail = window.innerHeight - top - 8;
       const z = natural > avail && natural > 0 ? Math.max(0.35, avail / natural) : 1;
       if (Math.abs(z - cur) > 0.005) { cur = z; inner.style.zoom = String(z); }
+      alignTop();
     };
     let raf = 0;
     const schedule = () => { if (raf) return; raf = requestAnimationFrame(() => { raf = 0; apply(); }); };

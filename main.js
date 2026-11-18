@@ -1,10 +1,11 @@
 'use strict';
-const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, Notification, net, powerMonitor } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, screen, nativeImage, Notification, net, powerMonitor, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const weatherLib = require('./lib/weather');
 const prayerLib = require('./lib/prayer');
 const { atScreenEdge, insideRect } = require('./lib/edge');
+const alarmLib = require('./lib/alarm');
 
 app.setName('Chrono');
 if (process.platform === 'win32') app.setAppUserModelId('com.ai4edutech.chrono');
@@ -12,12 +13,12 @@ if (process.platform === 'win32') app.setAppUserModelId('com.ai4edutech.chrono')
 if (!app.requestSingleInstanceLock()) { app.quit(); process.exit(0); }
 
 // ---------------------------------------------------------------- constants
-const WIDGET_ORDER = ['analog', 'weather', 'prayer', 'calendar', 'digital', 'world', 'notes', 'calc'];
+const WIDGET_ORDER = ['analog', 'weather', 'prayer', 'calendar', 'digital', 'world', 'alarm', 'notes', 'calc'];
 // Natural (unzoomed) CSS sizes. Height is re-measured from the page after render.
 const WIDGET_SIZE = {
   analog: { w: 240, h: 265 }, weather: { w: 380, h: 344 }, prayer: { w: 330, h: 432 },
   calendar: { w: 330, h: 302 }, digital: { w: 320, h: 136 }, world: { w: 330, h: 305 },
-  notes: { w: 290, h: 282 }, calc: { w: 290, h: 364 }
+  notes: { w: 290, h: 282 }, calc: { w: 300, h: 470 }, alarm: { w: 330, h: 330 }
 };
 const BAR_INNER_W = 340;   // widget column width in bar mode (CSS px)
 const BAR_PAD = 10;        // transparent padding around each card (CSS px)
@@ -35,7 +36,7 @@ const DEFAULTS = {
   hour12: true,
   autostart: false,
   order: WIDGET_ORDER.slice(),
-  enabled: { analog: true, weather: true, prayer: true, calendar: true, digital: false, world: false, notes: false, calc: false },
+  enabled: { analog: true, weather: true, prayer: true, calendar: true, digital: false, world: false, alarm: true, notes: false, calc: false },
   location: { name: 'Cairo, Egypt', short: 'Cairo', ar: 'القاهرة', lat: 30.0444, lon: 31.2357, tz: 'Africa/Cairo' },
   units: 'c',
   weather: { days: 5, layout: 'full' },
@@ -60,7 +61,9 @@ const files = {
   settings: path.join(userDir, 'chrono-settings.json'),
   state: path.join(userDir, 'chrono-state.json'),
   notes: path.join(userDir, 'chrono-notes.json'),
-  weather: path.join(userDir, 'chrono-weather-cache.json')
+  weather: path.join(userDir, 'chrono-weather-cache.json'),
+  alarms: path.join(userDir, 'chrono-alarms.json'),
+  calc: path.join(userDir, 'chrono-calc.json')
 };
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -89,9 +92,12 @@ if (settings.location && settings.location.short === 'Cairo' && !settings.locati
 // keep new widgets in `order` after upgrades
 WIDGET_ORDER.forEach((w) => { if (!settings.order.includes(w)) settings.order.push(w); });
 settings.order = settings.order.filter((w) => WIDGET_ORDER.includes(w));
-let state = Object.assign({ positions: {}, popouts: [], barCollapsed: false }, readJson(files.state, {}));
+let state = Object.assign({ positions: {}, sizes: {}, popouts: [], barCollapsed: false }, readJson(files.state, {}));
+if (!state.sizes) state.sizes = {};
 let notes = readJson(files.notes, null) || [{ id: 'n1', text: '', color: 0 }];
 let weatherCache = readJson(files.weather, null);
+let alarms = (readJson(files.alarms, []) || []).map(alarmLib.normalize);
+let calcData = Object.assign({ memory: 0, history: [], items: [], archive: [], currency: '' }, readJson(files.calc, {}) || {});
 
 // ---------------------------------------------------------------- windows
 const iconPath = path.join(__dirname, 'src', 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -191,28 +197,60 @@ function createBarWindow() {
   applyTop(barWin);
 }
 
-function createNoteWindow(noteId) {
-  if (noteWins[noteId]) { noteWins[noteId].focus(); return; }
+const NOTE_BG = ['#fdf38d', '#ffc4d1', '#c7f0bf', '#c9e7ff', '#e5d4ff', '#f2f2f2'];
+function createNoteWindow(noteId, near) {
+  if (noteWins[noteId]) { noteWins[noteId].show(); noteWins[noteId].focus(); return; }
+  const note = notes.find((n) => n.id === noteId);
+  if (!note) return;
   const wa = screen.getPrimaryDisplay().workArea;
-  const saved = state.positions['note:' + noteId] || { x: wa.x + wa.width - 560, y: wa.y + 120 };
-  const s = scale(); const w = Math.round(250 * s); const h = Math.round(250 * s);
-  const pos = clampToDisplay(saved.x, saved.y, w, h);
-  const win = new BrowserWindow(baseOpts({ width: w, height: h, x: pos.x, y: pos.y, alwaysOnTop: true }));
+  const s = scale();
+  const size = state.sizes['note:' + noteId] || { w: Math.round(230 * s), h: Math.round(220 * s) };
+  const saved = state.positions['note:' + noteId] || near || { x: wa.x + wa.width - size.w - 420, y: wa.y + 120 };
+  const pos = clampToDisplay(saved.x, saved.y, size.w, size.h);
+  // Solid (not transparent) so Windows lets the user resize it from any edge, like the Windows 7 notes.
+  const win = new BrowserWindow(baseOpts({
+    width: size.w, height: size.h, x: pos.x, y: pos.y, transparent: false, resizable: true, hasShadow: true,
+    minWidth: Math.round(150 * s), minHeight: Math.round(120 * s), backgroundColor: NOTE_BG[(note.color | 0) % NOTE_BG.length],
+    alwaysOnTop: !!note.onTop
+  }));
   win.removeMenu();
   win.loadFile(path.join(__dirname, 'src', 'note.html'), { query: { id: noteId } });
   win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(s));
-  win.once('ready-to-show', () => win.show());
+  win.once('ready-to-show', () => { if (visible) win.show(); });
   let t;
-  win.on('move', () => {
+  const remember = () => {
     clearTimeout(t);
-    t = setTimeout(() => { const [x, y] = win.getPosition(); state.positions['note:' + noteId] = { x, y }; writeJson('state', state); }, 300);
-  });
+    t = setTimeout(() => {
+      if (win.isDestroyed()) return;
+      const b = win.getBounds();
+      state.positions['note:' + noteId] = { x: b.x, y: b.y }; state.sizes['note:' + noteId] = { w: b.width, h: b.height };
+      writeJson('state', state);
+    }, 300);
+  };
+  win.on('move', remember); win.on('resize', remember);
   win.on('closed', () => {
     delete noteWins[noteId];
     if (!quitting) { state.popouts = state.popouts.filter((n) => n !== noteId); writeJson('state', state); }
   });
-  win.setAlwaysOnTop(true, 'floating');
+  if (note.onTop) win.setAlwaysOnTop(true, 'floating');
   noteWins[noteId] = win;
+  if (!state.popouts.includes(noteId)) { state.popouts.push(noteId); writeJson('state', state); }
+}
+
+function newFloatingNote(fromWin) {
+  const id = 'n' + Date.now().toString(36);
+  const last = fromWin && !fromWin.isDestroyed() ? fromWin.getBounds() : null;
+  const color = last ? ((notes.find((n) => noteWins[n.id] === fromWin) || {}).color | 0) : (settings.noteColor | 0);
+  notes.push({ id, text: '', html: '', color, onTop: false });
+  writeJson('notes', notes);
+  broadcast('notes:changed', notes, 'main');
+  createNoteWindow(id, last ? { x: last.x + 28, y: last.y + 28 } : null);
+  return id;
+}
+
+function showAllNotes() {
+  notes.forEach((n) => { if (!noteWins[n.id] && state.popouts.includes(n.id)) createNoteWindow(n.id); });
+  Object.values(noteWins).forEach((w) => { w.show(); w.moveTop(); });
 }
 
 function closeAllWidgetWindows() {
@@ -305,10 +343,10 @@ function trayClick() {
 
 // ---------------------------------------------------------------- strings for tray / notifications
 const TR = {
-  en: { show: 'Show widgets', hide: 'Hide widgets', widgets: 'Widgets', settings: 'Settings…', lock: 'Lock position', top: 'Always on top', mode: 'Layout', bar: 'Sidebar (gadget bar)', free: 'Free-floating', autostart: 'Start with Windows', quit: 'Quit Chrono', refresh: 'Refresh weather', edge: 'Pinned (always show)', peek: 'Show now',
+  en: { show: 'Show widgets', hide: 'Hide widgets', widgets: 'Widgets', settings: 'Settings…', lock: 'Lock position', top: 'Always on top', mode: 'Layout', bar: 'Sidebar (gadget bar)', free: 'Free-floating', autostart: 'Start with Windows', quit: 'Quit Chrono', refresh: 'Refresh weather', edge: 'Pinned (always show)', peek: 'Show now', newNote: 'New sticky note', showNotes: 'Show sticky notes', stopAlarm: 'Stop alarm', alarm: 'Alarm', nextAlarm: 'Next alarm', pickMusic: 'Choose alarm music', missed: (x) => `Missed alarm: ${x}`, snoozed: (m) => `Alarm snoozed for ${m} min`,
     names: { analog: 'Analog clock', weather: 'Weather', prayer: 'Prayer times', calendar: 'Calendar', digital: 'Digital clock', world: 'World time', notes: 'Sticky notes', calc: 'Calculator' },
     pray: { fajr: 'Fajr', sunrise: 'Sunrise', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' }, itsTime: (n) => `It is time for ${n}`, inMin: (n, m) => `${n} in ${m} minutes` },
-  ar: { show: 'إظهار الودجات', hide: 'إخفاء الودجات', widgets: 'الودجات', settings: 'الإعدادات…', lock: 'تثبيت المواضع', top: 'دائماً في المقدمة', mode: 'طريقة العرض', bar: 'شريط جانبي', free: 'ودجات حرة', autostart: 'التشغيل مع ويندوز', quit: 'إغلاق Chrono', refresh: 'تحديث الطقس', edge: 'مثبّت (ظاهر على طول)', peek: 'إظهار دلوقتي',
+  ar: { show: 'إظهار الودجات', hide: 'إخفاء الودجات', widgets: 'الودجات', settings: 'الإعدادات…', lock: 'تثبيت المواضع', top: 'دائماً في المقدمة', mode: 'طريقة العرض', bar: 'شريط جانبي', free: 'ودجات حرة', autostart: 'التشغيل مع ويندوز', quit: 'إغلاق Chrono', refresh: 'تحديث الطقس', edge: 'مثبّت (ظاهر على طول)', peek: 'إظهار دلوقتي', newNote: 'ملاحظة لاصقة جديدة', showNotes: 'إظهار الملاحظات', stopAlarm: 'إيقاف المنبّه', alarm: 'منبّه', nextAlarm: 'المنبّه الجاي', pickMusic: 'اختار موسيقى المنبّه', missed: (x) => `منبّه فاتك: ${x}`, snoozed: (m) => `المنبّه هيرن تاني بعد ${m} دقيقة`,
     names: { analog: 'ساعة عقارب', weather: 'الطقس', prayer: 'مواقيت الصلاة', calendar: 'التقويم', digital: 'ساعة رقمية', world: 'التوقيت العالمي', notes: 'ملاحظات لاصقة', calc: 'آلة حاسبة' },
     pray: { fajr: 'الفجر', sunrise: 'الشروق', dhuhr: 'الظهر', asr: 'العصر', maghrib: 'المغرب', isha: 'العشاء' }, itsTime: (n) => `حان الآن موعد صلاة ${n}`, inMin: (n, m) => `باقي ${m} دقيقة على ${n}` }
 };
@@ -319,6 +357,8 @@ function buildTrayMenu() {
   const t = tr();
   const patch = (p) => applyPatch(p, 'tray');
   const menu = Menu.buildFromTemplate([
+    ringing ? { label: '⏰ ' + t.stopAlarm, click: () => stopRing(true) } : null,
+    ringing ? { type: 'separator' } : null,
     edgeOn() && visible ? { label: t.peek, click: () => reveal(4000) } : null,
     { label: visible ? t.hide : t.show, click: () => setVisible(!visible) },
     { type: 'separator' },
@@ -329,6 +369,9 @@ function buildTrayMenu() {
     })),
     { type: 'separator' },
     { label: t.edge, type: 'checkbox', checked: !edgeOn(), click: (mi) => patch({ pinned: mi.checked }) },
+    { type: 'separator' },
+    { label: t.newNote, click: () => newFloatingNote(null) },
+    state.popouts.length ? { label: t.showNotes, click: () => showAllNotes() } : null,
     { label: t.mode, submenu: [
       { label: t.bar, type: 'radio', checked: settings.mode === 'bar', click: () => patch({ mode: 'bar' }) },
       { label: t.free, type: 'radio', checked: settings.mode === 'free', click: () => patch({ mode: 'free' }) }
@@ -391,11 +434,38 @@ ipcMain.handle('state:get', () => ({ barCollapsed: state.barCollapsed }));
 ipcMain.handle('app:version', () => app.getVersion());
 
 // notes live outside settings so typing never re-renders other widgets
+ipcMain.handle('calc:get', () => calcData);
+ipcMain.handle('calc:set', (e, data) => {
+  if (data && typeof data === 'object') {
+    calcData = Object.assign(calcData, data);
+    calcData.history = (calcData.history || []).slice(0, 200);
+    calcData.archive = (calcData.archive || []).slice(0, 100);
+    writeJson('calc', calcData);
+    BrowserWindow.getAllWindows().forEach((w) => { if (!w.isDestroyed() && w.webContents !== e.sender) w.webContents.send('calc:changed', calcData); });
+  }
+  return calcData;
+});
 ipcMain.handle('notes:get', () => notes);
 ipcMain.handle('notes:set', (e, list, from) => {
   notes = Array.isArray(list) ? list : notes; writeJson('notes', notes);
   BrowserWindow.getAllWindows().forEach((w) => { if (!w.isDestroyed() && w.webContents !== e.sender) w.webContents.send('notes:changed', notes, from); });
   return true;
+});
+ipcMain.handle('notes:new', (e) => newFloatingNote(BrowserWindow.fromWebContents(e.sender)));
+ipcMain.on('notes:delete', (_e, noteId) => {
+  notes = notes.filter((n) => n.id !== noteId); writeJson('notes', notes);
+  delete state.positions['note:' + noteId]; delete state.sizes['note:' + noteId];
+  state.popouts = state.popouts.filter((n) => n !== noteId); writeJson('state', state);
+  if (noteWins[noteId]) noteWins[noteId].destroy();
+  broadcast('notes:changed', notes, 'main');
+});
+ipcMain.on('notes:dock', (_e, noteId) => { if (noteWins[noteId]) noteWins[noteId].close(); });
+ipcMain.on('notes:style', (_e, noteId) => {
+  // colour / always-on-top changed inside a floating note
+  const n = notes.find((x) => x.id === noteId); const w = noteWins[noteId];
+  if (!n || !w) return;
+  w.setBackgroundColor(NOTE_BG[(n.color | 0) % NOTE_BG.length]);
+  w.setAlwaysOnTop(!!n.onTop, 'floating');
 });
 ipcMain.on('notes:popout', (_e, noteId) => {
   if (!state.popouts.includes(noteId)) state.popouts.push(noteId);
@@ -478,6 +548,119 @@ ipcMain.on('bar:collapse', (_e, collapsed) => {
   if (barWin) { barWin.setBounds(barBounds(state.barCollapsed)); barWin.webContents.send('bar:collapsed', state.barCollapsed); }
 });
 
+// ---------------------------------------------------------------- alarms
+let snoozes = [];            // [{ at, alarm }]
+let ringWin = null; let ringing = null; let ringTimeout = null;
+let alarmLastCheck = Date.now();
+
+function alarmPayload() {
+  const now = Date.now();
+  const next = alarmLib.soonest(alarms, snoozes, now);
+  return { alarms, snoozes: snoozes.map((x) => ({ at: x.at, id: x.alarm.id, label: x.alarm.label })), next: next ? { at: next.at, id: next.alarm.id, snooze: !!next.snooze } : null, ringing: ringing ? ringing.alarm.id : null };
+}
+function alarmsChanged() { writeJson('alarms', alarms); broadcast('alarms:changed', alarmPayload()); buildTrayMenu(); }
+
+function alarmTick() {
+  const now = Date.now();
+  const from = alarmLastCheck; alarmLastCheck = now + 1;
+  let changed = false;
+  alarms.forEach((a) => {
+    const at = alarmLib.nextFire(a, from);
+    if (at == null || at > now) return;
+    if (now - at <= 10 * 60000) ringAlarm(a, false);
+    else notify(tr().missed(a.label || a.time));   // the PC was asleep / off at that time
+    if (!a.days.length) { a.enabled = false; changed = true; }
+  });
+  const due = snoozes.filter((x) => x.at <= now);
+  if (due.length) { snoozes = snoozes.filter((x) => x.at > now); due.forEach((x) => ringAlarm(x.alarm, true)); changed = true; }
+  if (changed) alarmsChanged();
+}
+
+function notify(body, title) {
+  if (!Notification.isSupported()) return null;
+  const n = new Notification({ title: title || 'Chrono', body, icon: appIcon, silent: true });
+  n.show(); return n;
+}
+
+function ringAlarm(alarm, isSnooze) {
+  stopRing(false);
+  ringing = { alarm: clone(alarm), startedAt: Date.now(), snooze: isSnooze };
+  const t = tr();
+  // Windows notification banner (also lands in the notification centre)
+  const toast = notify(fmtClock(alarm.time) + (isSnooze ? ' (snooze)' : '') + ' · Chrono', '⏰ ' + (alarm.label || t.alarm));
+  if (toast) toast.on('click', () => { if (ringWin) { ringWin.show(); ringWin.focus(); } });
+  // Ringing banner above the notification area (plays the sound, Stop / Snooze)
+  const s = scale(); const w = Math.round(380 * s); const h = Math.round(176 * s);
+  const wa = screen.getPrimaryDisplay().workArea;
+  ringWin = new BrowserWindow(baseOpts({ width: w, height: h, x: wa.x + wa.width - w - 12, y: wa.y + wa.height - h - 12, alwaysOnTop: true, focusable: true }));
+  ringWin.removeMenu();
+  ringWin.setAlwaysOnTop(true, 'screen-saver');
+  ringWin.loadFile(path.join(__dirname, 'src', 'ring.html'));
+  ringWin.webContents.on('did-finish-load', () => ringWin && ringWin.webContents.setZoomFactor(s));
+  ringWin.once('ready-to-show', () => { if (ringWin) { ringWin.show(); ringWin.flashFrame(true); } });
+  ringWin.on('closed', () => { ringWin = null; });
+  clearTimeout(ringTimeout);
+  ringTimeout = setTimeout(() => { if (ringing) { notify(t.missed(alarm.label || fmtClock(alarm.time))); stopRing(true); } }, 10 * 60000);
+  alarmsChanged();
+}
+function stopRing(update) {
+  clearTimeout(ringTimeout);
+  ringing = null;
+  if (ringWin && !ringWin.isDestroyed()) ringWin.destroy();
+  ringWin = null;
+  if (update) alarmsChanged();
+}
+function snoozeRing() {
+  if (!ringing) return;
+  const a = ringing.alarm;
+  snoozes.push({ at: Date.now() + a.snooze * 60000, alarm: a });
+  notify(tr().snoozed(a.snooze));
+  stopRing(true);
+}
+function fmtClock(hhmm) {
+  const p = alarmLib.parseTime(hhmm); if (!p) return hhmm;
+  if (!settings.hour12) return hhmm;
+  const ar = settings.lang === 'ar';
+  return `${p.h % 12 || 12}:${String(p.min).padStart(2, '0')} ${p.h >= 12 ? (ar ? 'م' : 'PM') : (ar ? 'ص' : 'AM')}`;
+}
+
+ipcMain.handle('alarms:get', () => alarmPayload());
+ipcMain.handle('alarms:set', (_e, list) => {
+  if (Array.isArray(list)) alarms = list.map(alarmLib.normalize);
+  alarmLastCheck = Date.now();
+  alarmsChanged();
+  return alarmPayload();
+});
+ipcMain.handle('alarms:pick-sound', async (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender);
+  const r = await dialog.showOpenDialog(win, {
+    title: tr().pickMusic, properties: ['openFile'],
+    filters: [{ name: 'Audio', extensions: ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus'] }]
+  });
+  if (r.canceled || !r.filePaths.length) return null;
+  return { file: r.filePaths[0], fileName: path.basename(r.filePaths[0]) };
+});
+ipcMain.handle('ring:get', () => (ringing ? { alarm: ringing.alarm, snooze: ringing.snooze, clock: fmtClock(ringing.alarm.time) } : null));
+ipcMain.on('ring:stop', () => stopRing(true));
+ipcMain.on('ring:snooze', () => snoozeRing());
+ipcMain.on('alarms:cancel-snooze', (_e, id) => { snoozes = snoozes.filter((x) => x.alarm.id !== id); alarmsChanged(); });
+
+// Windows only shows toast banners for an app whose Start Menu shortcut carries its AppUserModelID.
+function ensureToastShortcut() {
+  if (process.platform !== 'win32' || !app.isPackaged) return;
+  try {
+    const lnk = path.join(app.getPath('appData'), 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Chrono', 'Chrono.lnk');
+    const opts = { target: process.execPath, icon: process.execPath, iconIndex: 0, appUserModelId: 'com.ai4edutech.chrono', description: 'Chrono' };
+    if (fs.existsSync(lnk)) {
+      const cur = shell.readShortcutLink(lnk);
+      if (cur.appUserModelId !== opts.appUserModelId) shell.writeShortcutLink(lnk, 'update', opts);
+    } else {
+      fs.mkdirSync(path.dirname(lnk), { recursive: true });
+      shell.writeShortcutLink(lnk, 'create', opts);
+    }
+  } catch (e) { console.error('shortcut', e.message); }
+}
+
 // ---------------------------------------------------------------- lifecycle
 app.on('second-instance', () => { if (!visible) setVisible(true); else if (edgeOn() && !revealed) reveal(4000); else openSettings(); });
 app.on('window-all-closed', (e) => { if (!quitting) e.preventDefault(); });
@@ -489,6 +672,9 @@ app.whenReady().then(() => {
   rebuildWindows();
   if (edgeOn()) reveal(3000);   // show briefly at startup so people see where Chrono lives
   setInterval(edgeTick, 120);
+  setInterval(alarmTick, 1000);
+  ensureToastShortcut();
+  powerMonitor.on('resume', () => alarmTick());
   state.popouts.forEach(createNoteWindow);
   if (weatherCache) setTimeout(() => broadcast('weather:changed', weatherCache), 800);
   refreshWeather();

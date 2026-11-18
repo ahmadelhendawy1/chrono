@@ -97,4 +97,15 @@ ok('edge: left side only reacts to the left edge', () => { assert.ok(E.atScreenE
 ok('edge: taskbar corner (Show desktop) does not trigger', () => { assert.ok(!E.atScreenEdge({ x: 1919, y: 1060 }, disp, 'right')); });
 ok('edge: second monitor offset is respected', () => { const d2 = { bounds: { x: -1280, y: 0, width: 1280, height: 1024 }, workArea: { x: -1280, y: 0, width: 1280, height: 984 } }; assert.ok(E.atScreenEdge({ x: -1280, y: 100 }, d2, 'left')); assert.ok(E.atScreenEdge({ x: -1, y: 100 }, d2, 'right')); });
 ok('edge: insideRect with margin', () => { const r = { x: 1560, y: 0, width: 360, height: 1040 }; assert.ok(E.insideRect({ x: 1560, y: 5 }, r, 0)); assert.ok(E.insideRect({ x: 1552, y: 5 }, r, 10)); assert.ok(!E.insideRect({ x: 1540, y: 5 }, r, 10)); });
+// ---- alarms
+const A = require('../lib/alarm');
+const at = (y, mo, d, h, mi) => new Date(y, mo - 1, d, h, mi, 0, 0).getTime();
+ok('alarm: one-time later today', () => { assert.strictEqual(A.nextFire(A.normalize({ time: '07:30' }), at(2026, 11, 18, 6, 0)), at(2026, 11, 18, 7, 30)); });
+ok('alarm: one-time already passed -> tomorrow', () => { assert.strictEqual(A.nextFire(A.normalize({ time: '07:30' }), at(2026, 11, 18, 8, 0)), at(2026, 11, 19, 7, 30)); });
+ok('alarm: exact minute counts (>=)', () => { assert.strictEqual(A.nextFire(A.normalize({ time: '07:30' }), at(2026, 11, 18, 7, 30)), at(2026, 11, 18, 7, 30)); });
+ok('alarm: weekdays only (Sun-Thu) skips Fri/Sat', () => { const a = A.normalize({ time: '06:00', days: [0, 1, 2, 3, 4] }); assert.strictEqual(new Date(A.nextFire(a, at(2026, 11, 20, 7, 0))).getDay(), 0); });   // Fri 20 Nov -> Sun 22
+ok('alarm: disabled never rings', () => { assert.strictEqual(A.nextFire(A.normalize({ time: '06:00', enabled: false }), Date.now()), null); });
+ok('alarm: crosses month end', () => { assert.strictEqual(A.nextFire(A.normalize({ time: '00:05' }), at(2026, 11, 30, 23, 0)), at(2026, 12, 1, 0, 5)); });
+ok('alarm: normalize cleans bad input', () => { const a = A.normalize({ time: '99:99', days: [9, 1, 1, '3'], volume: 7, snooze: 0, sound: 'file' }); assert.strictEqual(a.time, '07:00'); assert.deepStrictEqual(a.days, [1, 3]); assert.strictEqual(a.volume, 1); assert.strictEqual(a.snooze, 5); assert.strictEqual(a.sound, 'classic'); });
+ok('alarm: soonest picks earliest incl. snooze', () => { const now = at(2026, 11, 18, 6, 0); const x = A.normalize({ id: 'x', time: '07:00' }); const y = A.normalize({ id: 'y', time: '06:30' }); const s1 = A.soonest([x, y], [{ at: now + 10 * 60000, alarm: x }], now); assert.ok(s1.snooze && s1.alarm.id === 'x'); assert.strictEqual(A.soonest([x, y], [], now).alarm.id, 'y'); });
 console.log(pass + ' checks passed');

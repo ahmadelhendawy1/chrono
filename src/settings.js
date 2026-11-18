@@ -9,7 +9,7 @@
   const appVersion = api.version ? await api.version() : '';
   const TABS = ['general', 'widgets', 'location', 'weather', 'clock', 'calendar', 'world', 'prayer', 'about'];
   const TAB_KEY = { general: 'sGeneral', widgets: 'sWidgets', location: 'sLocation', weather: 'sWeather', clock: 'sClock', calendar: 'sCalendar', world: 'sWorld', prayer: 'sPrayer', about: 'sAbout' };
-  const WIDGETS = ['analog', 'weather', 'prayer', 'calendar', 'digital', 'world', 'notes', 'calc'];
+  const WIDGETS = ['analog', 'weather', 'prayer', 'calendar', 'digital', 'world', 'alarm', 'notes', 'calc'];
   const FACE_NAMES = ['Classic', 'Railway', 'Black', 'Gold', 'Roman', 'Navy', 'Arabic', 'Islamic', 'Walnut', 'Classroom'];
   const CITIES = [
     ['Cairo', 'Africa/Cairo'], ['Alexandria', 'Africa/Cairo'], ['Makkah', 'Asia/Riyadh'], ['Riyadh', 'Asia/Riyadh'], ['Dubai', 'Asia/Dubai'], ['Doha', 'Asia/Qatar'], ['Kuwait', 'Asia/Kuwait'],
@@ -236,7 +236,7 @@
     const a = document.activeElement;
     if (!(a && (a.tagName === 'INPUT' || a.tagName === 'SELECT'))) render();
   });
-  api.onSettingsTab((k) => { if (TABS.includes(k)) { tab = k; render(); } else { tab = ({ analog: 'clock', digital: 'clock', notes: 'widgets', calc: 'widgets' })[k] || 'general'; if (k === 'weather') tab = 'weather'; if (k === 'prayer') tab = 'prayer'; if (k === 'calendar') tab = 'calendar'; if (k === 'world') tab = 'world'; render(); } });
-  if (!TABS.includes(tab)) tab = ({ analog: 'clock', digital: 'clock', notes: 'widgets', calc: 'widgets' })[tab] || 'general';
+  api.onSettingsTab((k) => { if (TABS.includes(k)) { tab = k; render(); } else { tab = ({ analog: 'clock', digital: 'clock', notes: 'widgets', calc: 'widgets', alarm: 'widgets' })[k] || 'general'; if (k === 'weather') tab = 'weather'; if (k === 'prayer') tab = 'prayer'; if (k === 'calendar') tab = 'calendar'; if (k === 'world') tab = 'world'; render(); } });
+  if (!TABS.includes(tab)) tab = ({ analog: 'clock', digital: 'clock', notes: 'widgets', calc: 'widgets', alarm: 'widgets' })[tab] || 'general';
   render();
 })();

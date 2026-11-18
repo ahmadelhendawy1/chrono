@@ -28,6 +28,11 @@
     moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>', pin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
     arrow: '<path d="M12 3l5 9h-3.5v9h-3v-9H7z"/>', back: '<path d="M4 7h16M4 12h16M4 17h10"/>', chevL: '<path d="M14 5l-7 7 7 7"/>', chevR: '<path d="M10 5l7 7-7 7"/>',
     pushpin: '<path d="M9 3h6l-1.2 6.2L17 12.5H7l3.2-3.3z"/><path d="M12 12.5V21"/>',
+    bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
+    copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
+    save: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4M8 20v-6h8v6"/>',
+    play: '<path d="M8 5l11 7-11 7z"/>', stop: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>',
+    dock: '<path d="M4 4h16v16H4z"/><path d="M14 4v16"/><path d="M11 9l-3 3 3 3"/>',
     grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>'
   };
   const ic = (n) => h('span', { html: `<svg class="ic" viewBox="0 0 24 24">${P[n]}</svg>`, style: { display: 'inline-grid', placeItems: 'center' } });
@@ -329,23 +334,41 @@
 
   W.calc = function (root, ctx) {
     const { t } = ctx;
-    const mem = ctx.mem.calc = ctx.mem.calc || { expr: '', result: '', sci: false, deg: true, justEvaluated: false };
-    const exprEl = h('div', { class: 'cExpr' }); const resEl = h('div', { class: 'cRes' });
-    const sciBox = h('div', { class: 'cSci' });
-    const pad = h('div', { class: 'cPad' });
-    const card = h('div', { class: 'card calc', tabindex: '0' }, tools(ctx, 'calc',
-      h('button', { title: t('sci'), onclick: () => { mem.sci = !mem.sci; render(); } }, h('b', { style: { fontSize: '11px' } }, 'fx'))),
-    h('div', { class: 'cScreen nodrag' }, exprEl, resEl), sciBox, pad);
-    root.append(card);
+    const mem = ctx.mem.calc = ctx.mem.calc || { expr: '', result: '', sci: false, deg: true, justEvaluated: false, tab: 'calc' };
+    // Persistent part (memory, history, items, saved lists) lives in the main process.
+    let data = { memory: 0, history: [], items: [], archive: [], currency: '' };
+    let saveT = null;
+    const save = () => { clearTimeout(saveT); saveT = setTimeout(() => ctx.api.setCalc && ctx.api.setCalc(data), 250); };
+    const money = (v) => (Math.round(v * 100) / 100).toLocaleString(ctx.lang === 'ar' ? 'ar-EG-u-nu-latn' : 'en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    const cur = () => (data.currency || t('currencyDefault'));
+    const evalField = (str) => { const v = String(str || '').trim(); if (!v) return 0; try { return calculate(v.replace(/,/g, '.'), true); } catch (e) { return NaN; } };
 
+    const card = h('div', { class: 'card calc', tabindex: '0' });
+    root.append(card);
+    const tabsEl = h('div', { class: 'cTabs nodrag' });
+    const body = h('div', { class: 'cBody' });
+    card.append(tools(ctx, 'calc', mem.tab === 'calc' ? h('button', { title: t('sci'), onclick: () => { mem.sci = !mem.sci; renderBody(); } }, h('b', { style: { fontSize: '11px' } }, 'fx')) : null), tabsEl, body);
+
+    function renderTabs() {
+      tabsEl.innerHTML = '';
+      [['calc', t('calcTab')], ['items', t('itemsTab')], ['hist', t('histTab')]].forEach(([id, label]) => {
+        tabsEl.append(h('button', { class: 'cTab' + (mem.tab === id ? ' on' : ''), onclick: () => { mem.tab = id; renderAll(); } }, label));
+      });
+    }
+
+    // ---------------- calculator tab
+    let exprEl; let resEl; let memEl;
     const OPS = '+−×÷^';
     function press(k) {
       if (k === 'C') { mem.expr = ''; mem.result = ''; mem.justEvaluated = false; }
       else if (k === '⌫') { mem.expr = mem.expr.replace(/(sin|cos|tan|asin|acos|atan|ln|log|sqrt|√)\($|.$/, ''); mem.justEvaluated = false; }
       else if (k === '=') {
         if (!mem.expr) return;
-        try { const v = calculate(mem.expr, mem.deg); mem.result = fmtNum(v); mem.prev = mem.expr; mem.expr = mem.result; mem.justEvaluated = true; }
-        catch (e) { mem.result = t('err'); mem.justEvaluated = false; }
+        try {
+          const v = calculate(mem.expr, mem.deg); const r = fmtNum(v);
+          if (!mem.justEvaluated) { data.history.unshift({ expr: mem.expr, result: r, at: Date.now() }); data.history = data.history.slice(0, 200); save(); }
+          mem.result = r; mem.prev = mem.expr; mem.expr = r; mem.justEvaluated = true;
+        } catch (e) { mem.result = t('err'); mem.justEvaluated = false; }
       } else if (k === '±') {
         const m = /(\d+\.?\d*|\.\d+|π)$/.exec(mem.expr);
         if (!m) { mem.expr = mem.expr + '−'; }
@@ -364,34 +387,167 @@
         else if (OPS.includes(k) && mem.expr === '' && k !== '−') { /* ignore leading operator */ }
         else if (OPS.includes(k) && OPS.includes(mem.expr.slice(-1)) && k !== '−') mem.expr = mem.expr.slice(0, -1) + k;
         else mem.expr += k;
-        // live preview
         mem.result = '';
         try { if (mem.expr && /\d|π|e/.test(mem.expr) && !OPS.includes(mem.expr.slice(-1))) mem.result = fmtNum(calculate(mem.expr, mem.deg)); } catch (e) { mem.result = ''; }
         if (mem.result === mem.expr) mem.result = '';
       }
       paint();
     }
-    function btn(label, cls, key) { return h('button', { class: 'ck ' + (cls || ''), onclick: () => press(key || label) }, label); }
+    // value currently on screen (for M+ / M− / MS)
+    function shown() {
+      try { const src = mem.justEvaluated ? mem.expr : mem.expr; return src ? calculate(src, mem.deg) : 0; } catch (e) { return NaN; }
+    }
+    function memKey(k) {
+      const v = shown();
+      if (k === 'MC') data.memory = 0;
+      else if (k === 'MR') { const r = fmtNum(data.memory || 0); if (mem.justEvaluated || !mem.expr || OPS.includes(mem.expr.slice(-1)) || mem.expr.slice(-1) === '(') { if (mem.justEvaluated) mem.expr = ''; mem.expr += r; mem.justEvaluated = false; mem.result = ''; } else { mem.expr = r; } }
+      else if (!Number.isFinite(v)) return;
+      else if (k === 'M+') data.memory = (data.memory || 0) + v;
+      else if (k === 'M−') data.memory = (data.memory || 0) - v;
+      else if (k === 'MS') data.memory = v;
+      if (k !== 'MR') save();
+      paint();
+    }
     function paint() {
+      if (!exprEl) return;
       exprEl.textContent = mem.justEvaluated && mem.prev ? mem.prev + ' =' : (mem.expr || '');
       resEl.textContent = mem.justEvaluated ? mem.expr : (mem.result || (mem.expr ? '' : '0'));
       resEl.classList.toggle('err', mem.result === t('err'));
+      memEl.textContent = data.memory ? 'M  ' + fmtNum(data.memory) : '';
     }
-    function render() {
-      sciBox.innerHTML = ''; pad.innerHTML = '';
+    function btn(label, cls, key) { return h('button', { class: 'ck ' + (cls || ''), onclick: () => press(key || label) }, label); }
+    function renderCalc() {
+      exprEl = h('div', { class: 'cExpr' }); resEl = h('div', { class: 'cRes' }); memEl = h('div', { class: 'cMem' });
+      body.append(h('div', { class: 'cScreen nodrag' }, memEl, exprEl, resEl));
+      const memRow = h('div', { class: 'cMemRow' });
+      ['MC', 'MR', 'M+', 'M−', 'MS'].forEach((k) => memRow.append(h('button', { class: 'mk', title: t('mem.' + k), onclick: () => memKey(k) }, k)));
+      body.append(memRow);
       if (mem.sci) {
-        sciBox.append(h('button', { class: 'ck fn', onclick: () => { mem.deg = !mem.deg; render(); } }, mem.deg ? t('deg') : t('rad')),
+        const sciBox = h('div', { class: 'cSci' });
+        sciBox.append(h('button', { class: 'ck fn', onclick: () => { mem.deg = !mem.deg; renderBody(); } }, mem.deg ? t('deg') : t('rad')),
           btn('sin', 'fn'), btn('cos', 'fn'), btn('tan', 'fn'), btn('ln', 'fn'), btn('log', 'fn'), btn('√', 'fn'), btn('^', 'fn'),
           btn('(', 'fn'), btn(')', 'fn'), btn('x²', 'fn'), btn('π', 'fn'));
+        body.append(sciBox);
       }
+      const pad = h('div', { class: 'cPad' });
       ['C', '⌫', '%', '÷', '7', '8', '9', '×', '4', '5', '6', '−', '1', '2', '3', '+', '±', '0', '.', '='].forEach((k) => {
         const cls = k === '=' ? 'eq' : ('+−×÷'.includes(k) ? 'op' : (k === 'C' || k === '⌫' || k === '%' || k === '±' ? 'fn' : 'num'));
         pad.append(btn(k, cls));
       });
+      body.append(pad);
       paint();
     }
-    render();
+
+    // ---------------- items × price tab
+    function itemsTotal(items) { return (items || []).reduce((sum, it) => { const q = evalField(it.qty === '' || it.qty == null ? '1' : it.qty); const p = evalField(it.price); return sum + (Number.isFinite(q) && Number.isFinite(p) ? q * p : 0); }, 0); }
+    function renderItems() {
+      if (!data.items.length) data.items.push({ name: '', qty: '1', price: '' });
+      const list = h('div', { class: 'iList nodrag' });
+      const totalEl = h('div', { class: 'iTotal' });
+      const countEl = h('div', { class: 'iCount' });
+      const refreshTotal = () => {
+        totalEl.textContent = money(itemsTotal(data.items)) + ' ' + cur();
+        const n = data.items.filter((it) => it.name || it.price).length;
+        countEl.textContent = t('itemsCount')(n);
+      };
+      list.append(h('div', { class: 'iHead' }, h('span', {}, t('item')), h('span', {}, t('qty')), h('span', {}, t('price')), h('span', {}, t('lineTotal')), h('span', {})));
+      data.items.forEach((it, i) => {
+        const line = h('span', { class: 'iLine' });
+        const upd = () => {
+          const q = evalField(it.qty === '' ? '1' : it.qty); const p = evalField(it.price);
+          line.textContent = it.price === '' ? '' : (Number.isFinite(q) && Number.isFinite(p) ? money(q * p) : '?');
+          line.classList.toggle('bad', !(Number.isFinite(q) && Number.isFinite(p)));
+          refreshTotal(); save();
+        };
+        const field = (key, cls, ph, mode) => {
+          const inp = h('input', { class: 'iIn ' + cls, value: it[key] == null ? '' : it[key], placeholder: ph, inputmode: mode || 'text', spellcheck: 'false' });
+          inp.addEventListener('input', () => { it[key] = inp.value; upd(); });
+          inp.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (i === data.items.length - 1) { data.items.push({ name: '', qty: '1', price: '' }); save(); renderBody(); const ins = body.querySelectorAll('.iIn.name'); if (ins.length) ins[ins.length - 1].focus(); }
+              else { const ins = body.querySelectorAll('.iIn.name'); if (ins[i + 1]) ins[i + 1].focus(); }
+            }
+          });
+          return inp;
+        };
+        list.append(h('div', { class: 'iRow' },
+          field('name', 'name', t('itemPh')), field('qty', 'qty', '1', 'decimal'), field('price', 'price', '0', 'decimal'), line,
+          h('button', { class: 'iDel', title: t('delete'), onclick: () => { data.items.splice(i, 1); save(); renderBody(); } }, ic('close'))));
+        upd();
+      });
+      body.append(list);
+      body.append(h('button', { class: 'iAdd nodrag', onclick: () => { data.items.push({ name: '', qty: '1', price: '' }); save(); renderBody(); const ins = body.querySelectorAll('.iIn.name'); if (ins.length) ins[ins.length - 1].focus(); } }, ic('plus'), h('span', {}, t('addItem'))));
+      const curIn = h('input', { class: 'iCur', value: data.currency, placeholder: t('currencyDefault'), title: t('currency'), spellcheck: 'false' });
+      curIn.addEventListener('input', () => { data.currency = curIn.value.slice(0, 6); refreshTotal(); save(); });
+      body.append(h('div', { class: 'iFoot nodrag' },
+        h('div', { class: 'iSum' }, countEl, h('div', { class: 'iTotRow' }, h('span', { class: 'iTotLbl' }, t('total')), totalEl)),
+        h('div', { class: 'iBtns' },
+          curIn,
+          h('button', { class: 'iBtn', title: t('copyList'), onclick: (e) => copyList(e.currentTarget) }, ic('copy')),
+          h('button', { class: 'iBtn', title: t('saveList'), onclick: (e) => saveList(e.currentTarget) }, ic('save')),
+          h('button', { class: 'iBtn', title: t('newList'), onclick: () => { data.items = []; save(); renderBody(); } }, ic('trash')))));
+      refreshTotal();
+    }
+    function listText(items, total) {
+      const lines = items.filter((it) => it.name || it.price).map((it) => {
+        const q = evalField(it.qty === '' ? '1' : it.qty); const p = evalField(it.price);
+        return `${it.name || '—'}  ${fmtNum(q)} × ${money(p)} = ${money(q * p)}`;
+      });
+      return lines.concat(['----', `${t('total')}: ${money(total)} ${cur()}`]).join('\n');
+    }
+    function flash(btnEl) { if (!btnEl) return; btnEl.classList.add('done'); setTimeout(() => btnEl.classList.remove('done'), 900); }
+    function copyList(btnEl) { navigator.clipboard.writeText(listText(data.items, itemsTotal(data.items))).then(() => flash(btnEl), () => {}); }
+    function saveList(btnEl) {
+      const items = data.items.filter((it) => it.name || it.price);
+      if (!items.length) return;
+      const total = itemsTotal(items);
+      const first = items.find((it) => it.name);
+      data.archive.unshift({ at: Date.now(), items: JSON.parse(JSON.stringify(items)), total, currency: cur(), title: first ? first.name + (items.length > 1 ? ' +' + (items.length - 1) : '') : '' });
+      data.archive = data.archive.slice(0, 100);
+      save(); flash(btnEl);
+    }
+
+    // ---------------- history tab
+    function when(at) {
+      const d = new Date(at); const now = new Date();
+      const same = d.toDateString() === now.toDateString();
+      return new Intl.DateTimeFormat(loc(ctx), same ? { hour: 'numeric', minute: '2-digit', hour12: ctx.s.hour12 } : { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: ctx.s.hour12 }).format(d);
+    }
+    function renderHist() {
+      const wrap = h('div', { class: 'hWrap nodrag' });
+      wrap.append(h('div', { class: 'hSec' }, h('span', {}, t('calcHistory')),
+        data.history.length ? h('button', { class: 'hClear', onclick: () => { data.history = []; save(); renderBody(); } }, t('clear')) : null));
+      if (!data.history.length) wrap.append(h('div', { class: 'hEmpty' }, t('noHistory')));
+      data.history.slice(0, 60).forEach((x) => wrap.append(h('button', { class: 'hRow', title: t('useResult'), onclick: () => { mem.expr = x.result; mem.prev = x.expr; mem.justEvaluated = true; mem.tab = 'calc'; renderAll(); } },
+        h('div', { class: 'hExpr' }, x.expr + ' ='), h('div', { class: 'hRes' }, x.result), h('div', { class: 'hAt' }, when(x.at)))));
+      wrap.append(h('div', { class: 'hSec' }, h('span', {}, t('savedLists')),
+        data.archive.length ? h('button', { class: 'hClear', onclick: () => { data.archive = []; save(); renderBody(); } }, t('clear')) : null));
+      if (!data.archive.length) wrap.append(h('div', { class: 'hEmpty' }, t('noLists')));
+      data.archive.forEach((a, i) => wrap.append(h('div', { class: 'hList' },
+        h('button', { class: 'hListMain', title: t('openList'), onclick: () => { data.items = JSON.parse(JSON.stringify(a.items)); save(); mem.tab = 'items'; renderAll(); } },
+          h('div', { class: 'hExpr' }, (a.title || t('list')) + ' · ' + t('itemsCount')(a.items.length)),
+          h('div', { class: 'hRes' }, money(a.total) + ' ' + (a.currency || '')), h('div', { class: 'hAt' }, when(a.at))),
+        h('button', { class: 'iDel', title: t('delete'), onclick: () => { data.archive.splice(i, 1); save(); renderBody(); } }, ic('close')))));
+      body.append(wrap);
+    }
+
+    function renderBody() {
+      body.innerHTML = ''; exprEl = null;
+      card.dataset.tab = mem.tab;
+      if (mem.tab === 'items') renderItems(); else if (mem.tab === 'hist') renderHist(); else renderCalc();
+    }
+    function renderAll() {
+      // tools row carries the fx button only on the calculator tab
+      const old = card.querySelector('.tools'); if (old) old.replaceWith(tools(ctx, 'calc', mem.tab === 'calc' ? h('button', { title: t('sci'), onclick: () => { mem.sci = !mem.sci; renderBody(); } }, h('b', { style: { fontSize: '11px' } }, 'fx')) : null));
+      renderTabs(); renderBody();
+    }
+    renderAll();
+    if (ctx.api.getCalc) ctx.api.getCalc().then((d) => { if (d) data = Object.assign(data, d); renderBody(); });
+    ctx.sub('calc', (d) => { const a = document.activeElement; if (a && card.contains(a) && a.tagName === 'INPUT') return; data = Object.assign(data, d); renderBody(); });
+    ctx.cleanups.push(() => { if (saveT) { clearTimeout(saveT); ctx.api.setCalc && ctx.api.setCalc(data); } });
     card.addEventListener('keydown', (e) => {
+      if (mem.tab !== 'calc' || (e.target && e.target.tagName === 'INPUT')) return;
       const k = e.key;
       if (/^[0-9]$/.test(k) || k === '.') press(k);
       else if (k === '+') press('+'); else if (k === '-') press('−'); else if (k === '*') press('×'); else if (k === '/') { e.preventDefault(); press('÷'); }
@@ -399,7 +555,7 @@
       else if (k === 'Enter' || k === '=') { e.preventDefault(); press('='); }
       else if (k === 'Backspace') press('⌫'); else if (k === 'Escape' || k === 'Delete') press('C');
     });
-    card.addEventListener('mousedown', () => card.focus());
+    card.addEventListener('mousedown', (e) => { if (!e.target.closest('input')) card.focus(); });
   };
 
   // ------------------------------------------------------------------ WORLD TIME
@@ -462,7 +618,7 @@
       tabs.append(h('button', { class: 'nTab add', title: t('newNote'), onclick: () => { const id = 'n' + Date.now().toString(36); list.push({ id, text: '', color: (ctx.s.noteColor | 0) }); mem.sel = id; save(); render(); } }, ic('plus')));
       card.append(tabs);
       const ta = h('textarea', { class: 'nText', placeholder: t('notePh'), spellcheck: 'false' });
-      ta.value = n.text; ta.addEventListener('input', () => { n.text = ta.value; save(); });
+      ta.value = n.text; ta.addEventListener('input', () => { n.text = ta.value; n.html = textToHtml(ta.value); save(); });
       card.append(ta);
       const bar = h('div', { class: 'nBar nodrag' });
       NOTE_COLORS.forEach((c, i) => bar.append(h('button', { class: 'nDot' + (n.color === i ? ' on' : ''), style: { background: c }, onclick: () => { n.color = i; save(); render(); } })));
@@ -480,27 +636,102 @@
     return '#' + [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => pad2(Math.round(v * f).toString(16))).join('');
   }
 
-  // Floating (popped-out) sticky note window.
+  // Floating sticky note window - Windows 7 style: solid colour, resizable, + / × in a strip that shows on hover,
+  // rich text (Ctrl+B / I / U / T, Ctrl+Shift+L for a bullet list), right-click for colours.
+  const NOTE_BG = ['#fdf38d', '#ffc4d1', '#c7f0bf', '#c9e7ff', '#e5d4ff', '#f2f2f2'];
+  const escHtml = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const textToHtml = (s) => escHtml(s).replace(/\n/g, '<br>');
+  // keep only simple formatting tags, no attributes
+  function cleanHtml(html) {
+    const tpl = document.createElement('template'); tpl.innerHTML = String(html || '');
+    const OK = { B: 1, STRONG: 1, I: 1, EM: 1, U: 1, S: 1, STRIKE: 1, BR: 1, DIV: 1, P: 1, UL: 1, OL: 1, LI: 1, SPAN: 1 };
+    (function walk(node) {
+      [...node.childNodes].forEach((c) => {
+        if (c.nodeType === 1) {
+          if (!OK[c.tagName]) { c.replaceWith(...c.childNodes); walk(node); return; }
+          [...c.attributes].forEach((a) => c.removeAttribute(a.name));
+          walk(c);
+        } else if (c.nodeType !== 3) c.remove();
+      });
+    })(tpl.content);
+    return tpl.innerHTML;
+  }
+  W._notes = { cleanHtml, textToHtml };
+
   W.noteWindow = function (root, ctx, noteId) {
-    let list = []; let saveT = null;
-    const card = h('div', { class: 'card notes pop' }); root.append(card);
-    const save = () => { clearTimeout(saveT); saveT = setTimeout(() => ctx.api.setNotes(list), 350); };
-    function render() {
-      const n = list.find((x) => x.id === noteId);
-      if (!n) { ctx.api.closeSelf(); return; }
-      const color = NOTE_COLORS[n.color % NOTE_COLORS.length];
-      card.innerHTML = '';
-      card.style.background = `linear-gradient(170deg, ${color}, ${shade(color)})`;
-      card.append(h('div', { class: 'tools' }, h('button', { title: ctx.t('close'), onclick: () => ctx.api.closeSelf() }, ic('close'))));
-      const ta = h('textarea', { class: 'nText', placeholder: ctx.t('notePh'), spellcheck: 'false' });
-      ta.value = n.text; ta.addEventListener('input', () => { n.text = ta.value; save(); });
-      card.append(ta);
-      const bar = h('div', { class: 'nBar nodrag' });
-      NOTE_COLORS.forEach((c, i) => bar.append(h('button', { class: 'nDot' + (n.color === i ? ' on' : ''), style: { background: c }, onclick: () => { n.color = i; save(); render(); } })));
-      card.append(bar);
+    const { t } = ctx;
+    let list = []; let saveT = null; let n = null;
+    document.body.classList.add('stickyPage');
+    const save = () => { clearTimeout(saveT); saveT = setTimeout(() => ctx.api.setNotes(list), 300); };
+    const strip = h('div', { class: 'sStrip' });
+    const ed = h('div', { class: 'sText nodrag', contenteditable: 'true', spellcheck: 'false', 'data-ph': t('notePh') });
+    const menu = h('div', { class: 'sMenu nodrag' });
+    const confirmBox = h('div', { class: 'sConfirm nodrag' });
+    root.append(strip, ed, menu, confirmBox);
+
+    function paintColor() {
+      const c = NOTE_BG[(n.color | 0) % NOTE_BG.length];
+      document.body.style.background = c;
+      root.style.setProperty('--sticky', c);
     }
-    ctx.api.getNotes().then((l) => { list = l || []; render(); });
-    ctx.sub('notes', (l) => { const a = document.activeElement; if (a && a.classList && a.classList.contains('nText')) return; list = l; render(); });
+    function renderStrip() {
+      strip.innerHTML = '';
+      strip.append(
+        h('button', { class: 'sBtn nodrag', title: t('newNote'), onclick: () => ctx.api.newNote() }, ic('plus')),
+        h('span', { class: 'sp' }),
+        h('button', { class: 'sBtn nodrag' + (n.onTop ? ' on' : ''), title: t('noteOnTop'), onclick: () => { n.onTop = !n.onTop; save(); ctx.api.setNotes(list).then(() => ctx.api.noteStyle(noteId)); renderStrip(); } }, ic('pushpin')),
+        h('button', { class: 'sBtn nodrag', title: t('noteColor'), onclick: (e) => openMenu(e) }, h('span', { class: 'sSwatch' })),
+        h('button', { class: 'sBtn nodrag', title: t('dockNote'), onclick: () => { clearTimeout(saveT); ctx.api.setNotes(list).then(() => ctx.api.dockNote(noteId)); } }, ic('dock')),
+        h('button', { class: 'sBtn nodrag', title: t('delNote'), onclick: () => askDelete() }, ic('close')));
+    }
+    function openMenu(e) {
+      e.preventDefault(); e.stopPropagation();
+      menu.innerHTML = '';
+      NOTE_BG.forEach((c, i) => menu.append(h('button', { class: 'sDot' + ((n.color | 0) === i ? ' on' : ''), style: { background: c }, title: t('noteColor'),
+        onclick: () => { n.color = i; save(); paintColor(); menu.classList.remove('open'); ctx.api.setNotes(list).then(() => ctx.api.noteStyle(noteId)); } })));
+      menu.classList.add('open');
+    }
+    function askDelete() {
+      const empty = !ed.textContent.trim();
+      if (empty) { ctx.api.deleteNote(noteId); return; }
+      confirmBox.innerHTML = '';
+      confirmBox.append(h('div', {}, t('delNoteQ')),
+        h('div', { class: 'row' },
+          h('button', { class: 'yes', onclick: () => ctx.api.deleteNote(noteId) }, t('yes')),
+          h('button', { onclick: () => confirmBox.classList.remove('open') }, t('no'))));
+      confirmBox.classList.add('open');
+    }
+    root.addEventListener('mousedown', (e) => { if (!menu.contains(e.target)) menu.classList.remove('open'); });
+    root.addEventListener('contextmenu', (e) => { if (n) openMenu(e); });
+
+    ed.addEventListener('input', () => { n.html = cleanHtml(ed.innerHTML); n.text = ed.innerText.replace(/\n{3,}/g, '\n\n').trim(); save(); });
+    ed.addEventListener('paste', (e) => { e.preventDefault(); const txt = (e.clipboardData || window.clipboardData).getData('text/plain'); document.execCommand('insertText', false, txt); });
+    ed.addEventListener('keydown', (e) => {
+      if (!(e.ctrlKey || e.metaKey)) return;
+      const k = e.key.toLowerCase();
+      const cmd = k === 'b' ? 'bold' : k === 'i' ? 'italic' : k === 'u' ? 'underline' : k === 't' ? 'strikeThrough' : (k === 'l' && e.shiftKey) ? 'insertUnorderedList' : null;
+      if (k === 'n') { e.preventDefault(); ctx.api.newNote(); return; }
+      if (cmd) { e.preventDefault(); document.execCommand(cmd); }
+    });
+
+    function load(l) {
+      list = l || [];
+      n = list.find((x) => x.id === noteId);
+      if (!n) { ctx.api.closeSelf(); return; }
+      paintColor(); renderStrip();
+      const html = n.html ? cleanHtml(n.html) : textToHtml(n.text);
+      if (ed.innerHTML !== html) ed.innerHTML = html;
+    }
+    ctx.api.getNotes().then((l) => { load(l); if (!ed.textContent) setTimeout(() => ed.focus(), 50); });
+    ctx.sub('notes', (l) => {
+      if (document.activeElement === ed && n) {   // typing here: keep our copy of this note, take the rest
+        const i = (l || []).findIndex((x) => x.id === noteId);
+        if (i < 0) { ctx.api.closeSelf(); return; }
+        list = l; list[i] = n; return;
+      }
+      load(l);
+    });
+    ctx.cleanups.push(() => { if (saveT) { clearTimeout(saveT); ctx.api.setNotes(list); } });
   };
 
   // ------------------------------------------------------------------ PRAYER TIMES
@@ -567,6 +798,179 @@
     }
     load();
     ctx.every(1000, () => { if (new Date().toDateString() !== lastKey) load(); else countdown(); });
+  };
+
+  // ------------------------------------------------------------------ ALARM CLOCK
+  // Alarms are scheduled by the main process (they ring even when this widget is hidden); this widget edits them.
+  const ALARM_SOUNDS = ['classic', 'chimes', 'digital', 'gentle'];
+  function fmtHM(hhmm, ctx) {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || ''); if (!m) return { main: hhmm || '', ap: '' };
+    const H = Number(m[1]);
+    if (!ctx.s.hour12) return { main: pad2(H) + ':' + m[2], ap: '' };
+    return { main: (H % 12 || 12) + ':' + m[2], ap: H >= 12 ? (ctx.lang === 'ar' ? 'م' : 'PM') : (ctx.lang === 'ar' ? 'ص' : 'AM') };
+  }
+  function untilText(ms, t) {
+    const totalMin = Math.max(0, Math.ceil(ms / 60000));
+    const d = Math.floor(totalMin / 1440); const hh = Math.floor((totalMin % 1440) / 60); const mm = totalMin % 60;
+    return t('inTime')(d, hh, mm);
+  }
+  W.alarm = function (root, ctx) {
+    const { t } = ctx;
+    const mem = ctx.mem.alarm = ctx.mem.alarm || { open: null };
+    let info = { alarms: [], next: null, snoozes: [], ringing: null };
+    let saveT = null; let stopPreview = null;
+    const card = h('div', { class: 'card alarm' }); root.append(card);
+    const head = h('div', { class: 'aHead' }); const listEl = h('div', { class: 'aList nodrag' });
+    card.append(tools(ctx, 'alarm'), head, listEl);
+    const dayNames = (() => { const f = new Intl.DateTimeFormat(loc(ctx), { weekday: 'short' }); return [0, 1, 2, 3, 4, 5, 6].map((d) => f.format(new Date(2024, 0, 7 + d))); })();
+    const chipNames = ctx.lang === 'ar' ? (() => { const f = new Intl.DateTimeFormat(loc(ctx), { weekday: 'narrow' }); return [0, 1, 2, 3, 4, 5, 6].map((d) => f.format(new Date(2024, 0, 7 + d))); })() : dayNames;
+    const weekOrder = (() => { const ws = Number(ctx.s.calendar && ctx.s.calendar.weekStart) || 0; return [0, 1, 2, 3, 4, 5, 6].map((i) => (ws + i) % 7); })();
+    const push = () => { clearTimeout(saveT); saveT = setTimeout(() => ctx.api.setAlarms(info.alarms).then((p) => { info.next = p.next; info.snoozes = p.snoozes; paintHead(); }), 250); };
+    function daysText(a) {
+      if (!a.days.length) return t('once');
+      if (a.days.length === 7) return t('everyDay');
+      return weekOrder.filter((d) => a.days.includes(d)).map((d) => dayNames[d]).join(' · ');
+    }
+    function paintHead() {
+      head.innerHTML = '';
+      const title = h('div', { class: 'title' }, ic('bell'), h('span', {}, t('alarms')));
+      let sub;
+      if (info.next) {
+        const a = info.alarms.find((x) => x.id === info.next.id);
+        const hm = new Intl.DateTimeFormat(loc(ctx), { hour: 'numeric', minute: '2-digit', hour12: ctx.s.hour12, weekday: new Date(info.next.at).toDateString() !== new Date().toDateString() ? 'short' : undefined }).format(new Date(info.next.at));
+        sub = h('div', { class: 'aNext' }, (info.next.snooze ? t('snoozedUntil') : t('nextAlarm')) + ' ' + hm + ' · ' + untilText(info.next.at - Date.now(), t) + (a && a.label ? ' · ' + a.label : ''));
+      } else sub = h('div', { class: 'aNext dim' }, t('noAlarmsOn'));
+      head.append(title, sub);
+      (info.snoozes || []).forEach((z) => head.append(h('div', { class: 'aSnz' }, '💤 ' + (z.label || t('alarm')) + ' · ' + new Intl.DateTimeFormat(loc(ctx), { hour: 'numeric', minute: '2-digit', hour12: ctx.s.hour12 }).format(new Date(z.at)),
+        h('button', { onclick: () => ctx.api.cancelSnooze(z.id) }, t('cancel')))));
+    }
+    function sw(on, onchange) {
+      return h('button', { class: 'aSw' + (on ? ' on' : ''), role: 'switch', 'aria-checked': String(on), onclick: (e) => { e.stopPropagation(); onchange(!on); } }, h('span'));
+    }
+    function stepper(val, max, onset) {
+      const v = h('div', { class: 'aNum' }, pad2(val));
+      const set = (x) => { const n = (x + max + 1) % (max + 1); onset(n); };
+      v.addEventListener('wheel', (e) => { e.preventDefault(); set(val + (e.deltaY < 0 ? 1 : -1)); }, { passive: false });
+      return h('div', { class: 'aStep' },
+        h('button', { onclick: () => set(val + 1) }, '▲'), v, h('button', { onclick: () => set(val - 1) }, '▼'));
+    }
+    function editor(a) {
+      const [H, M] = a.time.split(':').map(Number);
+      const setTime = (hh, mm) => { a.time = pad2(hh) + ':' + pad2(mm); a.enabled = true; push(); renderList(); };
+      const box = h('div', { class: 'aEdit' });
+      const timeRow = h('div', { class: 'aTime' });
+      if (ctx.s.hour12) {
+        const h12 = H % 12 || 12; const pm = H >= 12;
+        timeRow.append(stepper(h12, 12, (x) => { const v = x === 0 ? 12 : x; setTime((v % 12) + (pm ? 12 : 0), M); }), h('div', { class: 'aColon' }, ':'),
+          stepper(M, 59, (x) => setTime(H, x)),
+          h('div', { class: 'aAmPm' },
+            h('button', { class: !pm ? 'on' : '', onclick: () => setTime(H % 12, M) }, ctx.lang === 'ar' ? 'ص' : 'AM'),
+            h('button', { class: pm ? 'on' : '', onclick: () => setTime((H % 12) + 12, M) }, ctx.lang === 'ar' ? 'م' : 'PM')));
+      } else {
+        timeRow.append(stepper(H, 23, (x) => setTime(x, M)), h('div', { class: 'aColon' }, ':'), stepper(M, 59, (x) => setTime(H, x)));
+      }
+      box.append(timeRow);
+      const quick = h('div', { class: 'aQuick' });
+      [5, 10, 30, 60].forEach((m) => quick.append(h('button', { onclick: () => { const d = new Date(Date.now() + m * 60000); a.days = []; setTime(d.getHours(), d.getMinutes()); } }, '+' + (m < 60 ? m + t('minShort') : '1' + t('hourShort')))));
+      box.append(quick);
+      const label = h('input', { class: 'aLabel', value: a.label, placeholder: t('alarmLabelPh'), maxlength: '60', spellcheck: 'false' });
+      label.addEventListener('input', () => { a.label = label.value; push(); });
+      box.append(label);
+      const days = h('div', { class: 'aDays' });
+      weekOrder.forEach((d) => days.append(h('button', { class: a.days.includes(d) ? 'on' : '', title: dayNames[d], onclick: () => { a.days = a.days.includes(d) ? a.days.filter((x) => x !== d) : a.days.concat(d); push(); renderList(); } }, chipNames[d])));
+      box.append(h('div', { class: 'aLbl' }, t('repeat') + ' · ' + daysText(a)), days);
+      // sound
+      const soundSel = h('select', { class: 'aSel' });
+      ALARM_SOUNDS.forEach((k) => soundSel.append(h('option', { value: k, selected: a.sound === k }, t('tone.' + k))));
+      if (a.file) soundSel.append(h('option', { value: 'file', selected: a.sound === 'file' }, '🎵 ' + a.fileName));
+      soundSel.append(h('option', { value: '__pick' }, t('pickMusic')));
+      soundSel.addEventListener('change', async () => {
+        if (soundSel.value === '__pick') {
+          const r = await ctx.api.pickAlarmSound();
+          if (r) { a.file = r.file; a.fileName = r.fileName; a.sound = 'file'; }
+          push(); renderList(); return;
+        }
+        a.sound = soundSel.value; push();
+      });
+      const prev = h('button', { class: 'aPrev', title: t('preview') }, ic(stopPreview ? 'stop' : 'play'));
+      prev.addEventListener('click', () => {
+        if (stopPreview) { stopPreview(); stopPreview = null; prev.replaceChildren(ic('play')); return; }
+        stopPreview = window.ChronoSound.play({ sound: a.sound, file: a.file, volume: a.volume, rampUp: false });
+        prev.replaceChildren(ic('stop'));
+        const mine = stopPreview;
+        setTimeout(() => { if (stopPreview === mine) { stopPreview(); stopPreview = null; prev.replaceChildren(ic('play')); } }, 6000);
+      });
+      box.append(h('div', { class: 'aLbl' }, t('sound')), h('div', { class: 'aRow' }, soundSel, prev));
+      const vol = h('input', { type: 'range', min: '5', max: '100', value: String(Math.round(a.volume * 100)), class: 'aVol' });
+      vol.addEventListener('input', () => { a.volume = Number(vol.value) / 100; push(); });
+      const snz = h('select', { class: 'aSel small' });
+      [1, 3, 5, 10, 15, 20, 30].forEach((m) => snz.append(h('option', { value: String(m), selected: a.snooze === m }, m + ' ' + t('minShort'))));
+      snz.addEventListener('change', () => { a.snooze = Number(snz.value); push(); });
+      const ramp = h('label', { class: 'aChk' }, h('input', { type: 'checkbox', checked: a.rampUp }), h('span', {}, t('rampUp')));
+      ramp.querySelector('input').addEventListener('change', (e) => { a.rampUp = e.target.checked; push(); });
+      box.append(h('div', { class: 'aRow' }, h('span', { class: 'aLbl inline' }, t('volume')), vol),
+        h('div', { class: 'aRow' }, h('span', { class: 'aLbl inline' }, t('snooze')), snz, ramp));
+      box.append(h('div', { class: 'aRow end' },
+        h('button', { class: 'aDel', onclick: () => { info.alarms = info.alarms.filter((x) => x.id !== a.id); mem.open = null; push(); renderList(); } }, ic('trash'), h('span', {}, t('delete'))),
+        h('button', { class: 'aDone', onclick: () => { mem.open = null; if (stopPreview) { stopPreview(); stopPreview = null; } renderList(); } }, t('done'))));
+      return box;
+    }
+    function renderList() {
+      listEl.innerHTML = '';
+      const sorted = info.alarms.slice().sort((x, y) => x.time.localeCompare(y.time));
+      if (!sorted.length) listEl.append(h('div', { class: 'aEmpty' }, t('noAlarms')));
+      sorted.forEach((a) => {
+        const f = fmtHM(a.time, ctx);
+        const row = h('div', { class: 'aItem' + (a.enabled ? '' : ' off') + (info.ringing === a.id ? ' ringing' : '') + (mem.open === a.id ? ' open' : '') });
+        const top = h('div', { class: 'aTop', onclick: () => { mem.open = mem.open === a.id ? null : a.id; renderList(); } },
+          h('div', { class: 'aClock' }, h('span', { class: 'hm' }, f.main), f.ap ? h('span', { class: 'ap' }, f.ap) : null),
+          h('div', { class: 'aMeta' }, h('div', { class: 'aName' }, a.label || t('alarm')), h('div', { class: 'aDaysTxt' }, daysText(a) + (a.sound === 'file' ? ' · 🎵' : ''))),
+          sw(a.enabled, (v) => { a.enabled = v; push(); renderList(); }));
+        row.append(top);
+        if (mem.open === a.id) row.append(editor(a));
+        listEl.append(row);
+      });
+      listEl.append(h('button', { class: 'aAdd', onclick: () => {
+        const d = new Date(Date.now() + 60 * 60000); d.setMinutes(Math.ceil(d.getMinutes() / 5) * 5 % 60);
+        const a = { id: 'a' + Date.now().toString(36), time: pad2(d.getHours()) + ':' + pad2(d.getMinutes()), label: '', days: [], enabled: true, sound: 'classic', file: '', fileName: '', volume: 0.8, snooze: 5, rampUp: true };
+        info.alarms.push(a); mem.open = a.id; push(); renderList();
+      } }, ic('plus'), h('span', {}, t('addAlarm'))));
+      paintHead();
+    }
+    function apply(p) { info = Object.assign(info, p); info.alarms = (p.alarms || []).map((x) => Object.assign({}, x)); renderList(); }
+    ctx.api.getAlarms().then(apply);
+    ctx.sub('alarms', (p) => {
+      const a = document.activeElement;
+      if (mem.open && a && card.contains(a) && (a.tagName === 'INPUT' || a.tagName === 'SELECT')) { info.next = p.next; info.snoozes = p.snoozes; info.ringing = p.ringing; paintHead(); return; }
+      apply(p);
+    });
+    ctx.every(20000, paintHead);
+    ctx.cleanups.push(() => { if (stopPreview) stopPreview(); if (saveT) { clearTimeout(saveT); ctx.api.setAlarms(info.alarms); } });
+  };
+
+  // Ringing banner window (bottom-right, above the notification area).
+  W.ringWindow = function (root, ctx) {
+    const { t } = ctx;
+    document.body.classList.add('ringPage');
+    let stop = null;
+    const card = h('div', { class: 'card ring' }); root.append(card);
+    ctx.api.ringInfo().then((r) => {
+      if (!r) { ctx.api.closeSelf(); return; }
+      const a = r.alarm;
+      const now = new Date();
+      card.append(
+        h('div', { class: 'rIcon' }, ic('bell')),
+        h('div', { class: 'rMain' },
+          h('div', { class: 'rLabel' }, (a.label || t('alarm')) + (r.snooze ? ' · ' + t('snoozeAgain') : '')),
+          h('div', { class: 'rTime' }, new Intl.DateTimeFormat(loc(ctx), { hour: 'numeric', minute: '2-digit', hour12: ctx.s.hour12 }).format(now)),
+          h('div', { class: 'rBtns nodrag' },
+            h('button', { class: 'rSnooze', onclick: () => ctx.api.ringSnooze() }, '💤 ' + t('snooze') + ' ' + a.snooze + ' ' + t('minShort')),
+            h('button', { class: 'rStop', onclick: () => ctx.api.ringStop() }, t('stop')))));
+      stop = window.ChronoSound.play({ sound: a.sound, file: a.file, volume: a.volume, rampUp: a.rampUp });
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key === ' ' || e.key === 'Enter') ctx.api.ringStop(); });
+    });
+    ctx.cleanups.push(() => { if (stop) stop(); });
+    window.addEventListener('beforeunload', () => { if (stop) stop(); });
   };
 
   window.Widgets = W;

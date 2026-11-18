@@ -7,7 +7,7 @@ fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive:
 app.setPath('userData', dir);
 app.commandLine.appendSwitch('no-sandbox'); app.commandLine.appendSwitch('disable-gpu');
 fs.writeFileSync(path.join(dir, 'chrono-settings.json'), JSON.stringify({ mode, lang: process.env.CHRONO_LANG || 'en', pinned: false,
-  enabled: { analog: true, weather: true, prayer: true, calendar: false, digital: false, world: false, notes: false, calc: false } }));
+  enabled: { analog: true, weather: true, prayer: true, calendar: false, digital: false, world: false, alarm: false, notes: false, calc: false } }));
 
 const logs = []; const results = []; let fails = 0;
 const check = (name, cond) => { results.push((cond ? 'ok   ' : 'FAIL ') + name); if (!cond) fails++; };
@@ -41,7 +41,7 @@ app.whenReady().then(async () => {
     cursor = { x: bar.getBounds().x + 60, y: 40 };
     await bar.webContents.executeJavaScript("document.querySelector('.barTop button:not(.pinBtn)').click()"); await sleep(500);
     const rows = await bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].map(b => b.textContent + ':' + b.classList.contains('on')).join(',')");
-    check('widgets panel lists all 8 with on/off state', rows.split(',').length === 8 && /Calendar:false/.test(rows) && /Weather:true/.test(rows));
+    check('widgets panel lists all 9 with on/off state', rows.split(',').length === 9 && /Calendar:false/.test(rows) && /Weather:true/.test(rows));
     await bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].find(b => b.textContent.startsWith('Calendar')).click()"); await sleep(800);
     const s1 = JSON.parse(fs.readFileSync(path.join(dir, 'chrono-settings.json'), 'utf8'));
     check('one click turns a closed widget back on', s1.enabled.calendar === true);
@@ -53,7 +53,7 @@ app.whenReady().then(async () => {
     await bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].find(b => b.textContent.startsWith('Weather')).click()"); await sleep(800);
     check('weather comes back with its switch (no reset)', await bar.webContents.executeJavaScript("!!document.querySelector('.slot[data-id=weather]')"));
     // all off -> empty hint, bar still there
-    await bar.webContents.executeJavaScript("window.chrono.patch({ enabled: { analog:false, weather:false, prayer:false, calendar:false } })"); await sleep(700);
+    await bar.webContents.executeJavaScript("window.chrono.patch({ enabled: { analog:false, weather:false, prayer:false, calendar:false, alarm:false } })"); await sleep(700);
     await bar.webContents.executeJavaScript("document.querySelector('.barTop button:not(.pinBtn)').click()"); await sleep(400);
     check('all widgets off: bar + hint remain so they can be turned back on', chrono().length === 1 && await bar.webContents.executeJavaScript("!!document.querySelector('.wpEmpty')"));
     await shot('empty');
