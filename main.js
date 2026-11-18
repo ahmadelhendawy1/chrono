@@ -50,7 +50,7 @@ const DEFAULTS = {
   widgetScale: {},           // per-widget size multiplier (0.4 - 2)
   widgetLang: {},            // per-widget language override: 'ar' | 'en' (missing = follow the app language)
   barAutoFit: true,          // shrink the bar contents so everything fits the screen height
-  edgeReveal: true,          // stay hidden; pop out when the mouse touches the screen edge (barSide)
+  pinned: true,              // pinned = always shown; unpinned = hidden, pops out when the mouse touches the screen edge (barSide)
   noteColor: 0
 };
 
@@ -174,7 +174,7 @@ function createWidgetWindow(id) {
 
 function barBounds(collapsed) {
   const wa = screen.getPrimaryDisplay().workArea; const s = scale();
-  const fullW = Math.round((BAR_INNER_W + BAR_PAD * 2) * s);
+  const fullW = Math.round((BAR_INNER_W + BAR_PAD) * s);   // padding only on the inner side: cards sit flush on the screen edge
   const w = collapsed ? Math.round(BAR_COLLAPSED_W * s) : fullW;
   const x = settings.barSide === 'left' ? wa.x : wa.x + wa.width - w;
   return { x, y: wa.y, width: w, height: wa.height };
@@ -184,7 +184,7 @@ function createBarWindow() {
   const b = barBounds(state.barCollapsed);
   barWin = new BrowserWindow(baseOpts(Object.assign({}, b, { alwaysOnTop: !!settings.alwaysOnTop })));
   barWin.removeMenu();
-  barWin.loadFile(path.join(__dirname, 'src', 'bar.html'), { query: { side: settings.barSide } });
+  barWin.loadFile(path.join(__dirname, 'src', 'bar.html'), { query: { side: settings.barSide === 'left' ? 'left' : 'right' } });
   barWin.webContents.on('did-finish-load', () => barWin && barWin.webContents.setZoomFactor(scale()));
   barWin.once('ready-to-show', () => { if (!barWin) return; barWin.chronoReady = true; if (shouldShow()) showWin(barWin); });
   barWin.on('closed', () => { barWin = null; });
@@ -242,7 +242,7 @@ function openSettings(tab) {
 }
 
 // ---------------------------------------------------------------- show / hide + screen-edge reveal
-const edgeOn = () => !!settings.edgeReveal;
+const edgeOn = () => !settings.pinned;
 const shouldShow = () => visible && (!edgeOn() || revealed);
 const widgetWinList = () => [barWin, ...Object.values(widgetWins)].filter((w) => w && !w.isDestroyed());
 
@@ -305,10 +305,10 @@ function trayClick() {
 
 // ---------------------------------------------------------------- strings for tray / notifications
 const TR = {
-  en: { show: 'Show widgets', hide: 'Hide widgets', widgets: 'Widgets', settings: 'Settings…', lock: 'Lock position', top: 'Always on top', mode: 'Layout', bar: 'Sidebar (gadget bar)', free: 'Free-floating', autostart: 'Start with Windows', quit: 'Quit Chrono', refresh: 'Refresh weather', edge: 'Pop out at screen edge', peek: 'Show now',
+  en: { show: 'Show widgets', hide: 'Hide widgets', widgets: 'Widgets', settings: 'Settings…', lock: 'Lock position', top: 'Always on top', mode: 'Layout', bar: 'Sidebar (gadget bar)', free: 'Free-floating', autostart: 'Start with Windows', quit: 'Quit Chrono', refresh: 'Refresh weather', edge: 'Pinned (always show)', peek: 'Show now',
     names: { analog: 'Analog clock', weather: 'Weather', prayer: 'Prayer times', calendar: 'Calendar', digital: 'Digital clock', world: 'World time', notes: 'Sticky notes', calc: 'Calculator' },
     pray: { fajr: 'Fajr', sunrise: 'Sunrise', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' }, itsTime: (n) => `It is time for ${n}`, inMin: (n, m) => `${n} in ${m} minutes` },
-  ar: { show: 'إظهار الودجات', hide: 'إخفاء الودجات', widgets: 'الودجات', settings: 'الإعدادات…', lock: 'تثبيت المواضع', top: 'دائماً في المقدمة', mode: 'طريقة العرض', bar: 'شريط جانبي', free: 'ودجات حرة', autostart: 'التشغيل مع ويندوز', quit: 'إغلاق Chrono', refresh: 'تحديث الطقس', edge: 'يظهر لما الماوس يلمس طرف الشاشة', peek: 'إظهار دلوقتي',
+  ar: { show: 'إظهار الودجات', hide: 'إخفاء الودجات', widgets: 'الودجات', settings: 'الإعدادات…', lock: 'تثبيت المواضع', top: 'دائماً في المقدمة', mode: 'طريقة العرض', bar: 'شريط جانبي', free: 'ودجات حرة', autostart: 'التشغيل مع ويندوز', quit: 'إغلاق Chrono', refresh: 'تحديث الطقس', edge: 'مثبّت (ظاهر على طول)', peek: 'إظهار دلوقتي',
     names: { analog: 'ساعة عقارب', weather: 'الطقس', prayer: 'مواقيت الصلاة', calendar: 'التقويم', digital: 'ساعة رقمية', world: 'التوقيت العالمي', notes: 'ملاحظات لاصقة', calc: 'آلة حاسبة' },
     pray: { fajr: 'الفجر', sunrise: 'الشروق', dhuhr: 'الظهر', asr: 'العصر', maghrib: 'المغرب', isha: 'العشاء' }, itsTime: (n) => `حان الآن موعد صلاة ${n}`, inMin: (n, m) => `باقي ${m} دقيقة على ${n}` }
 };
@@ -328,7 +328,7 @@ function buildTrayMenu() {
       click: (mi) => patch({ enabled: { [id]: mi.checked } })
     })),
     { type: 'separator' },
-    { label: t.edge, type: 'checkbox', checked: edgeOn(), click: (mi) => patch({ edgeReveal: mi.checked }) },
+    { label: t.edge, type: 'checkbox', checked: !edgeOn(), click: (mi) => patch({ pinned: mi.checked }) },
     { label: t.mode, submenu: [
       { label: t.bar, type: 'radio', checked: settings.mode === 'bar', click: () => patch({ mode: 'bar' }) },
       { label: t.free, type: 'radio', checked: settings.mode === 'free', click: () => patch({ mode: 'free' }) }
@@ -374,7 +374,7 @@ function applyPatch(patch, from) {
   applyAutostart();
   broadcast('settings:changed', settings, from);
   if (windowSig() !== before) rebuildWindows(); else buildTrayMenu();
-  if (edgeOn() !== edgeBefore) { if (edgeOn()) reveal(2500); else { revealed = false; applyShown(); buildTrayMenu(); } }
+  if (edgeOn() !== edgeBefore) { if (edgeOn()) { revealed = true; wasInside = true; leaveSince = 0; pinnedUntil = 0; applyShown(); buildTrayMenu(); } else { revealed = false; applyShown(); buildTrayMenu(); } }
   else if (edgeOn() && revealed && from === 'tray') pinnedUntil = Date.now() + 2500;  // just used the tray: give time to see the change
   if (JSON.stringify(settings.location) !== locBefore) refreshWeather();
   if (JSON.stringify([settings.prayer, settings.location]) !== prayerBefore) firedToday = {};

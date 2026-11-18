@@ -17,7 +17,7 @@ Download **Chrono-Setup-x.y.z.exe** from the [latest release](https://github.com
 Windows may show a SmartScreen warning because the installer is not code-signed: click **More info → Run anyway**.
 
 ## Use
-- **Screen-edge pop-out (new in 1.3):** Chrono stays hidden and slides out when you push the mouse to the right edge of the screen (or left, if you choose), then hides again when the mouse leaves. Turn it off in Settings > General or the tray menu to keep the widgets on screen all the time.
+- **Pin button (new in 1.3):** the pin at the top of the sidebar keeps Chrono on screen (pinned, the default). Unpin it and Chrono hides by itself, then slides back out when you push the mouse to the right edge of the screen (or left, if you choose). The sidebar sits flush against the screen edge with no gap.
 - **Widget switches (new in 1.3):** the grid button at the top of the sidebar opens an on/off switch for every widget, so a widget you closed with its X comes back with one click. The same switches are in the tray menu.
 - Chrono lives in the system tray. Left-click pops the widgets out / hides them; right-click opens the menu (widget switches, layout, lock, always-on-top, start with Windows, settings).
 - Ctrl + mouse wheel over a widget resizes it. Settings > Widgets has a size slider per widget.

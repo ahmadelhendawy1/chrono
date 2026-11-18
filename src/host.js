@@ -68,6 +68,7 @@
       const top = h('div', { class: 'barTop' },
         h('span', { class: 'title' }, 'Chrono'),
         h('span', { class: 'row' },
+          h('button', { class: 'pinBtn' + (s.pinned !== false ? ' on' : ''), title: s.pinned !== false ? t('unpinTip') : t('pinTip'), onclick: () => api.patch({ pinned: s.pinned === false }) }, ic('pushpin')),
           h('button', { class: panelOpen ? 'on' : '', title: t('widgetsMenu'), onclick: () => { panelOpen = !panelOpen; mountAll(); } }, ic('grid')),
           h('button', { title: t('settings'), onclick: () => api.openSettings() }, ic('gear')),
           h('button', { title: '', onclick: () => api.collapseBar(true) }, ic(s.barSide === 'left' ? 'chevL' : 'chevR'))));
@@ -149,6 +150,7 @@
   });
 
   document.body.classList.toggle('bar', bar);
+  if (bar) document.body.classList.add(q.get('side') === 'left' ? 'side-left' : 'side-right');
   mountAll();
 
   if (bar) {

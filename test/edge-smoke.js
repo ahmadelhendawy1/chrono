@@ -6,7 +6,7 @@ const dir = process.env.CHRONO_TEST_DIR; const out = process.env.CHRONO_OUT; con
 fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir, { recursive: true }); fs.mkdirSync(out, { recursive: true });
 app.setPath('userData', dir);
 app.commandLine.appendSwitch('no-sandbox'); app.commandLine.appendSwitch('disable-gpu');
-fs.writeFileSync(path.join(dir, 'chrono-settings.json'), JSON.stringify({ mode, lang: process.env.CHRONO_LANG || 'en', edgeReveal: true,
+fs.writeFileSync(path.join(dir, 'chrono-settings.json'), JSON.stringify({ mode, lang: process.env.CHRONO_LANG || 'en', pinned: false,
   enabled: { analog: true, weather: true, prayer: true, calendar: false, digital: false, world: false, notes: false, calc: false } }));
 
 const logs = []; const results = []; let fails = 0;
@@ -39,7 +39,7 @@ app.whenReady().then(async () => {
     cursor = { x: d.bounds.width - 1, y: 200 }; await sleep(600);
     const bar = chrono()[0]; const barId = bar.webContents.id;
     cursor = { x: bar.getBounds().x + 60, y: 40 };
-    await bar.webContents.executeJavaScript("document.querySelector('.barTop button').click()"); await sleep(500);
+    await bar.webContents.executeJavaScript("document.querySelector('.barTop button:not(.pinBtn)').click()"); await sleep(500);
     const rows = await bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].map(b => b.textContent + ':' + b.classList.contains('on')).join(',')");
     check('widgets panel lists all 8 with on/off state', rows.split(',').length === 8 && /Calendar:false/.test(rows) && /Weather:true/.test(rows));
     await bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].find(b => b.textContent.startsWith('Calendar')).click()"); await sleep(800);
@@ -54,15 +54,24 @@ app.whenReady().then(async () => {
     check('weather comes back with its switch (no reset)', await bar.webContents.executeJavaScript("!!document.querySelector('.slot[data-id=weather]')"));
     // all off -> empty hint, bar still there
     await bar.webContents.executeJavaScript("window.chrono.patch({ enabled: { analog:false, weather:false, prayer:false, calendar:false } })"); await sleep(700);
-    await bar.webContents.executeJavaScript("document.querySelector('.barTop button').click()"); await sleep(400);
+    await bar.webContents.executeJavaScript("document.querySelector('.barTop button:not(.pinBtn)').click()"); await sleep(400);
     check('all widgets off: bar + hint remain so they can be turned back on', chrono().length === 1 && await bar.webContents.executeJavaScript("!!document.querySelector('.wpEmpty')"));
     await shot('empty');
     await bar.webContents.executeJavaScript("window.chrono.patch({ enabled: { weather: true, prayer: true } })"); await sleep(600);
   }
-  // turning edge reveal off keeps Chrono on screen
-  await chrono()[0].webContents.executeJavaScript("window.chrono.patch({ edgeReveal: false })"); await sleep(900);
+  if (mode === 'bar') {
+    const bar = chrono()[0]; const wb = bar.getBounds();
+    check('bar touches the right screen edge', wb.x + wb.width === d.workArea.x + d.workArea.width);
+    const gap = await bar.webContents.executeJavaScript("(() => { const W = window.innerWidth; return [...document.querySelectorAll('.slot > *')].map(e => Math.round(W - e.getBoundingClientRect().right)); })()");
+    check('cards sit flush on the right (no gap): ' + JSON.stringify(gap), gap.length > 0 && gap.every((g) => g === 0));
+    check('no visible scrollbar strip', await bar.webContents.executeJavaScript("document.getElementById('barScroll').offsetWidth === document.getElementById('barScroll').clientWidth"));
+    // pin button: click it -> pinned, stays visible after the mouse leaves
+    await bar.webContents.executeJavaScript("document.querySelector('.pinBtn').click()"); await sleep(900);
+  } else {
+    await chrono()[0].webContents.executeJavaScript("window.chrono.patch({ pinned: true })"); await sleep(900);
+  }
   cursor = { x: 300, y: 300 }; await sleep(2000);
-  check('edge reveal off: widgets stay visible', allVisible());
+  check('pinned: widgets stay visible', allVisible());
   await shot('final');
   fs.writeFileSync(path.join(out, 'report.txt'), results.join('\n') + '\n--- renderer errors ---\n' + (logs.join('\n') || '(none)') + '\n');
   app.exit(fails ? 1 : 0);

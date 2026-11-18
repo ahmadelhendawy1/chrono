@@ -76,3 +76,16 @@ body.collapsed #handle { display: grid; position: absolute; top: 50%; transform:
 .wpRow.on .wpSw { background: #2fb36d; }
 .wpRow.on .wpSw::after { inset-inline-start: 17px; }
 .wpEmpty { display: flex; align-items: center; gap: 8px; margin: 8px auto; width: 320px; border: 1px dashed rgba(255, 255, 255, .45); border-radius: 14px; padding: 14px; background: rgba(14, 22, 40, .7); color: #fff; font: inherit; font-size: 13px; cursor: pointer; }
+
+/* ----- bar flush against the screen edge (no gap, no scrollbar strip) ----- */
+body.bar #barScroll { scrollbar-width: none; }
+body.bar #barScroll::-webkit-scrollbar { width: 0; height: 0; }
+body.bar.side-right .slot > *, body.bar.side-right .wPanel, body.bar.side-right .wpEmpty { margin-left: auto !important; margin-right: 0 !important; }
+body.bar.side-left .slot > *, body.bar.side-left .wPanel, body.bar.side-left .wpEmpty { margin-right: auto !important; margin-left: 0 !important; }
+body.bar.side-right #root { padding-right: 0; }
+body.bar.side-left #root { padding-left: 0; }
+body.bar.side-right .barTop { padding-right: 0; }
+body.bar.side-left .barTop { padding-left: 0; }
+body.bar.side-right.collapsed #handle { left: auto; right: 0; inset-inline-start: auto; border-radius: 12px 0 0 12px; }
+body.bar.side-left.collapsed #handle { right: auto; left: 0; inset-inline-start: auto; border-radius: 0 12px 12px 0; }
+.barTop button.pinBtn.on { background: rgba(255, 196, 0, .85); color: #2b2410; }

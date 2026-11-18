@@ -14,7 +14,7 @@
       // settings
       sGeneral: 'General', sWidgets: 'Widgets', sLocation: 'Location', sWeather: 'Weather', sClock: 'Clocks', sCalendar: 'Calendar', sWorld: 'World time', sPrayer: 'Prayer times', sAbout: 'About',
       language: 'Language', theme: 'Theme', themeGlass: 'Glass (navy)', themeDark: 'Dark', themeLight: 'Light',
-      layout: 'Layout', layoutBar: 'Sidebar (Windows 7 style)', layoutFree: 'Free-floating', edgeReveal: 'Pop out when the mouse touches the screen edge', edgeRevealHelp: 'Chrono stays hidden and slides out when you push the mouse to the edge; it hides again when the mouse leaves.', edgeSide: 'Screen edge', widgetsMenu: 'Widgets', noWidgets: 'All widgets are off – click to turn some on', barSide: 'Sidebar edge', right: 'Right', left: 'Left',
+      layout: 'Layout', layoutBar: 'Sidebar (Windows 7 style)', layoutFree: 'Free-floating', pinned: 'Pinned – always show', pinnedHelp: 'Turn off to let Chrono hide by itself and slide back out when the mouse touches the screen edge. Same as the pin button at the top of the sidebar.', pinTip: 'Pin – always show', unpinTip: 'Unpin – hide and show at the screen edge', edgeSide: 'Screen edge', widgetsMenu: 'Widgets', noWidgets: 'All widgets are off – click to turn some on', barSide: 'Sidebar edge', right: 'Right', left: 'Left',
       alwaysTop: 'Keep widgets above other windows', lock: 'Lock widget positions', autostart: 'Start Chrono with Windows', opacity: 'Widget background opacity', scale: 'Widget size', hour12: '12-hour time (AM/PM)',
       reset: 'Reset all settings', resetConfirm: 'Reset every Chrono setting to its default?',
       widgetsHelp: 'Turn widgets on or off. In sidebar mode the order below is the order on the bar.', moveUp: 'Move up', moveDown: 'Move down',
@@ -40,7 +40,7 @@
       pray: { fajr: 'الفجر', sunrise: 'الشروق', dhuhr: 'الظهر', asr: 'العصر', maghrib: 'المغرب', isha: 'العشاء' },
       sGeneral: 'عام', sWidgets: 'الودجات', sLocation: 'الموقع', sWeather: 'الطقس', sClock: 'الساعات', sCalendar: 'التقويم', sWorld: 'التوقيت العالمي', sPrayer: 'مواقيت الصلاة', sAbout: 'عن البرنامج',
       language: 'اللغة', theme: 'المظهر', themeGlass: 'زجاجي (كحلي)', themeDark: 'داكن', themeLight: 'فاتح',
-      layout: 'طريقة العرض', layoutBar: 'شريط جانبي (زي ويندوز 7)', layoutFree: 'ودجات حرة', edgeReveal: 'يظهر لما الماوس يلمس طرف الشاشة', edgeRevealHelp: 'كرونو بيفضل مستخبي، ولما توصّل الماوس لطرف الشاشة يطلع، ولما تبعد يستخبى تاني.', edgeSide: 'طرف الشاشة', widgetsMenu: 'الودجات', noWidgets: 'كل الودجات مقفولة – اضغط هنا عشان تشغّلها', barSide: 'جهة الشريط', right: 'يمين', left: 'يسار',
+      layout: 'طريقة العرض', layoutBar: 'شريط جانبي (زي ويندوز 7)', layoutFree: 'ودجات حرة', pinned: 'مثبّت – ظاهر على طول', pinnedHelp: 'اقفلها عشان كرونو يستخبى لوحده ويطلع تاني لما الماوس يلمس طرف الشاشة. نفس زرار الدبوس اللي فوق الشريط.', pinTip: 'تثبيت – ظاهر على طول', unpinTip: 'فك التثبيت – يستخبى ويطلع من طرف الشاشة', edgeSide: 'طرف الشاشة', widgetsMenu: 'الودجات', noWidgets: 'كل الودجات مقفولة – اضغط هنا عشان تشغّلها', barSide: 'جهة الشريط', right: 'يمين', left: 'يسار',
       alwaysTop: 'خلّي الودجات فوق باقي النوافذ', lock: 'تثبيت مواضع الودجات', autostart: 'شغّل Chrono مع ويندوز', opacity: 'شفافية خلفية الودجات', scale: 'حجم الودجات', hour12: 'نظام 12 ساعة (ص/م)',
       reset: 'استرجاع كل الإعدادات الافتراضية', resetConfirm: 'هترجّع كل إعدادات Chrono للوضع الافتراضي، متأكد؟',
       widgetsHelp: 'شغّل أو أوقف أي ودجت. في وضع الشريط الجانبي، الترتيب هنا هو ترتيبها على الشريط.', moveUp: 'لأعلى', moveDown: 'لأسفل',
