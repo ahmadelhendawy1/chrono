@@ -51,6 +51,7 @@ const DEFAULTS = {
   widgetScale: {},           // per-widget size multiplier (0.4 - 2)
   widgetLang: {},            // per-widget language override: 'ar' | 'en' (missing = follow the app language)
   barAutoFit: true,          // shrink the bar contents so everything fits the screen height
+  detached: {},              // bar mode: widgets popped out of the sidebar to float on the desktop
   pinned: true,              // pinned = always shown; unpinned = hidden, pops out when the mouse touches the screen edge (barSide)
   noteColor: 0
 };
@@ -119,7 +120,11 @@ const clampW = (v) => Math.min(2, Math.max(0.4, Number(v) || 1));
 // Free-floating windows: global size x this widget's own size.
 const scaleFor = (id) => Math.min(3, Math.max(0.3, scale() * clampW((settings.widgetScale || {})[id] || 1)));
 const enabledList = () => settings.order.filter((w) => settings.enabled[w]);
-const windowSig = () => JSON.stringify([settings.mode, settings.barSide, settings.alwaysOnTop, scale(), settings.mode === 'free' ? enabledList() : null, settings.locked, settings.mode === 'free' ? settings.widgetScale : null]);
+// Which widgets get their own floating window: all of them in free mode, only the popped-out ones in bar mode.
+const isFloating = (id) => settings.mode === 'free' || !!(settings.detached || {})[id];
+const floatingList = () => enabledList().filter(isFloating);
+// Only these force a full rebuild; enabling, popping out and resizing widgets are applied in place.
+const windowSig = () => JSON.stringify([settings.mode, settings.barSide, settings.alwaysOnTop, scale(), settings.locked]);
 
 function applyTop(win) {
   win.setAlwaysOnTop(!!settings.alwaysOnTop, settings.alwaysOnTop ? 'floating' : 'normal');
@@ -167,13 +172,14 @@ function createWidgetWindow(id) {
   win.removeMenu();
   win.loadFile(path.join(__dirname, 'src', 'widget.html'), { query: { w: id } });
   win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(s));
-  win.once('ready-to-show', () => { win.chronoReady = true; if (shouldShow()) showWin(win); });
+  win.chronoId = id; win.chronoScale = s;
+  win.once('ready-to-show', () => { win.chronoReady = true; if (edgeManaged(win) ? shouldShow() : visible) showWin(win); });
   let t;
   win.on('move', () => {
     clearTimeout(t);
-    t = setTimeout(() => { const [x, y] = win.getPosition(); state.positions[id] = { x, y }; writeJson('state', state); }, 300);
+    t = setTimeout(() => { if (win.isDestroyed()) return; const [x, y] = win.getPosition(); state.positions[id] = { x, y }; writeJson('state', state); }, 300);
   });
-  win.on('closed', () => { delete widgetWins[id]; });
+  win.on('closed', () => { if (widgetWins[id] === win) delete widgetWins[id]; });
   widgetWins[id] = win;
   applyTop(win);
 }
@@ -263,8 +269,25 @@ function rebuildWindows() {
   closeAllWidgetWindows();
   resetSlots();
   if (settings.mode === 'bar') createBarWindow(); // always: its header holds the widget switches
-  else enabledList().forEach(createWidgetWindow);
+  floatingList().forEach(createWidgetWindow);
   buildTrayMenu();
+}
+
+// Bring the floating widget windows in line with the settings without touching the others.
+function syncWidgetWindows() {
+  const want = floatingList();
+  Object.keys(widgetWins).forEach((id) => { if (!want.includes(id)) { try { widgetWins[id].destroy(); } catch (e) { /* gone */ } delete widgetWins[id]; } });
+  want.forEach((id) => { if (!widgetWins[id]) createWidgetWindow(id); else applyScale(id); });
+}
+
+// Live zoom of one floating widget (wheel / corner grip / settings slider) - no window rebuild.
+function applyScale(id) {
+  const win = widgetWins[id]; if (!win || win.isDestroyed()) return;
+  const s = scaleFor(id);
+  if (Math.abs((win.chronoScale || 0) - s) < 0.001) return;
+  win.chronoScale = s;
+  win.webContents.setZoomFactor(s);
+  if (win.cssSize) win.setContentSize(Math.round(win.cssSize.w * s), Math.round(win.cssSize.h * s));
 }
 
 function openSettings(tab) {
@@ -282,7 +305,9 @@ function openSettings(tab) {
 // ---------------------------------------------------------------- show / hide + screen-edge reveal
 const edgeOn = () => !settings.pinned;
 const shouldShow = () => visible && (!edgeOn() || revealed);
-const widgetWinList = () => [barWin, ...Object.values(widgetWins)].filter((w) => w && !w.isDestroyed());
+// Windows that hide / pop out with the screen edge: the sidebar in bar mode (popped-out widgets stay put), every widget in free mode.
+const widgetWinList = () => (settings.mode === 'bar' ? [barWin] : Object.values(widgetWins)).filter((w) => w && !w.isDestroyed());
+const edgeManaged = (win) => settings.mode !== 'bar' || win === barWin;
 
 function showWin(win) {
   if (edgeOn()) win.setAlwaysOnTop(true, 'floating'); else applyTop(win);
@@ -295,6 +320,10 @@ function applyShown() {
   widgetWinList().forEach((w) => {
     if (show) { if (w.chronoReady) showWin(w); }
     else { applyTop(w); if (w.isVisible()) w.hide(); }
+  });
+  if (settings.mode === 'bar') Object.values(widgetWins).forEach((w) => {   // popped-out widgets follow show/hide only
+    if (w.isDestroyed() || !w.chronoReady) return;
+    if (visible) { applyTop(w); if (!w.isVisible()) w.showInactive(); } else if (w.isVisible()) w.hide();
   });
 }
 
@@ -416,7 +445,7 @@ function applyPatch(patch, from) {
   writeJson('settings', settings);
   applyAutostart();
   broadcast('settings:changed', settings, from);
-  if (windowSig() !== before) rebuildWindows(); else buildTrayMenu();
+  if (windowSig() !== before) rebuildWindows(); else { syncWidgetWindows(); buildTrayMenu(); }
   if (edgeOn() !== edgeBefore) { if (edgeOn()) { revealed = true; wasInside = true; leaveSince = 0; pinnedUntil = 0; applyShown(); buildTrayMenu(); } else { revealed = false; applyShown(); buildTrayMenu(); } }
   else if (edgeOn() && revealed && from === 'tray') pinnedUntil = Date.now() + 2500;  // just used the tray: give time to see the change
   if (JSON.stringify(settings.location) !== locBefore) refreshWeather();
@@ -536,9 +565,46 @@ ipcMain.on('ui:size', (e, w, h) => {
   if (!win || win === barWin || win === settingsWin || !(w > 0) || !(h > 0)) return;
   const id = Object.keys(widgetWins).find((k) => widgetWins[k] === win);
   const s = id ? scaleFor(id) : scale();
+  win.cssSize = { w, h };
   const nw = Math.round(w * s); const nh = Math.round(h * s);
   const [cw, ch] = win.getContentSize();
   if (Math.abs(cw - nw) > 1 || Math.abs(ch - nh) > 1) win.setContentSize(nw, nh);
+});
+ipcMain.on('ui:detach-widget', (_e, id, at) => {
+  if (!WIDGET_ORDER.includes(id)) return;
+  if (at && Number.isFinite(at.y)) {
+    const b = barWin ? barWin.getBounds() : screen.getPrimaryDisplay().workArea;
+    const w = Math.round((WIDGET_SIZE[id].w + BAR_PAD * 2) * scaleFor(id));
+    state.positions[id] = { x: settings.barSide === 'left' ? b.x + b.width + 16 : b.x - w - 16, y: Math.round(at.y) };
+    writeJson('state', state);
+  }
+  applyPatch({ detached: { [id]: true } }, 'ui');
+});
+ipcMain.on('ui:dock-widget', (_e, id) => applyPatch({ detached: { [id]: false } }, 'ui'));
+// Corner-grip resize: follow the real cursor from the main process (zoom changes the page's own coordinates).
+let gripTimer = null;
+ipcMain.on('ui:resize-start', (e, id) => {
+  const win = widgetWins[id]; if (!win) return;
+  const b = win.getBounds(); const base = clampW((settings.widgetScale || {})[id] || 1);
+  const start = screen.getCursorScreenPoint();
+  const ltr = !(start.x - b.x < b.width / 2);   // grip on the right edge grows to the right
+  clearInterval(gripTimer);
+  gripTimer = setInterval(() => {
+    if (win.isDestroyed()) { clearInterval(gripTimer); return; }
+    const p = screen.getCursorScreenPoint();
+    const dx = ltr ? p.x - start.x : start.x - p.x; const dy = p.y - start.y;
+    const grow = (b.width + dx) / b.width * 0.5 + (b.height + dy) / b.height * 0.5;   // diagonal drag
+    const next = Math.round(Math.min(2, Math.max(0.4, base * grow)) * 100) / 100;
+    if (next !== ((settings.widgetScale || {})[id] || 1)) {
+      settings.widgetScale = Object.assign({}, settings.widgetScale, { [id]: next });
+      applyScale(id);
+      if (!ltr && win.cssSize) { const nb = win.getBounds(); win.setPosition(b.x + b.width - nb.width, b.y); }
+    }
+  }, 16);
+});
+ipcMain.on('ui:resize-end', (_e, id) => {
+  clearInterval(gripTimer); gripTimer = null;
+  applyPatch({ widgetScale: { [id]: (settings.widgetScale || {})[id] || 1 } }, 'grip');
 });
 ipcMain.on('ui:hide-widget', (_e, id) => { if (settings.enabled[id]) applyPatch({ enabled: { [id]: false } }, 'ui'); });
 ipcMain.on('ui:open-settings', (_e, tab) => openSettings(tab));

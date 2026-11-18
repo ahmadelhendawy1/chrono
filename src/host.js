@@ -89,7 +89,7 @@
         scroll.append(panel);
       }
       const inner = h('div', { id: 'barInner' });
-      const order = (s.order || []).filter((id) => s.enabled[id]);
+      const order = (s.order || []).filter((id) => s.enabled[id] && !(s.detached || {})[id]);
       if (!order.length && !panelOpen) inner.append(h('button', { class: 'wpEmpty', onclick: () => { panelOpen = true; mountAll(); } }, ic('plus'), h('span', {}, t('noWidgets'))));
       order.forEach((id) => {
         const z = Math.min(1, Math.max(0.4, Number((s.widgetScale || {})[id]) || 1));
@@ -144,7 +144,8 @@
   // Ctrl + mouse wheel over a widget resizes just that widget.
   let wheelAcc = 0; let wheelTimer = null; let wheelId = null;
   window.addEventListener('wheel', (e) => {
-    if (!e.ctrlKey) return;
+    const onGrip = page === 'widget' && e.target.closest && e.target.closest('.rsGrip');
+    if (!e.ctrlKey && !onGrip) return;
     e.preventDefault();
     const slotEl = e.target.closest ? e.target.closest('.slot') : null;
     const id = page === 'widget' ? q.get('w') : (slotEl ? slotEl.dataset.id : null);
@@ -174,6 +175,16 @@
     document.body.classList.toggle('collapsed', !!st.barCollapsed);
     api.onBarCollapsed((c) => document.body.classList.toggle('collapsed', !!c));
   } else if (page === 'widget') {
+    // corner grip: drag out to grow, in to shrink (or scroll the wheel over it)
+    const wid = q.get('w');
+    const grip = document.createElement('div');
+    grip.className = 'rsGrip'; grip.title = window.makeT(s.lang)('resizeTip');
+    grip.innerHTML = '<svg viewBox="0 0 16 16"><path d="M15 6L6 15M15 10.5L10.5 15M15 14.5L14.5 15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/></svg>';
+    document.body.append(grip);
+    let dragging = false;
+    grip.addEventListener('pointerdown', (e) => { if (s.locked) return; e.preventDefault(); dragging = true; grip.setPointerCapture(e.pointerId); document.body.classList.add('resizing'); api.resizeStart(wid); });
+    const end = () => { if (!dragging) return; dragging = false; document.body.classList.remove('resizing'); api.resizeEnd(wid); };
+    grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end); grip.addEventListener('lostpointercapture', end);
     const report = () => api.resize(root.offsetWidth, root.offsetHeight);
     new ResizeObserver(report).observe(root);
     report();

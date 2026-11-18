@@ -19,7 +19,7 @@
     return el;
   }
   const P = {
-    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+    gear: '<path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.7l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.7v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
     close: '<path d="M6 6l12 12M18 6L6 18"/>', plus: '<path d="M12 5v14M5 12h14"/>',
     trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>',
     pop: '<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
@@ -47,8 +47,18 @@
   }
   const placeName = (ctx, fallback) => (ctx.lang === 'ar' && ctx.s.location.ar) ? ctx.s.location.ar : (ctx.s.location.short || fallback || ctx.s.location.name);
   function tools(ctx, id, extra) {
+    const s = ctx.s;
+    // sidebar: pop this one widget out to float on the desktop; popped-out widget: put it back in the sidebar
+    const pop = ctx.bar && ctx.api.detachWidget ? h('button', { class: 'popBtn', title: ctx.t('popOutWidget'), onclick: (e) => {
+      const card = e.currentTarget.closest('.slot') || e.currentTarget.closest('.card');
+      const z = window.outerHeight / Math.max(1, window.innerHeight);
+      const y = window.screenY + (card ? card.getBoundingClientRect().top : 0) * z;
+      ctx.api.detachWidget(id, { y });
+    } }, ic('pop')) : null;
+    const dock = !ctx.bar && s.mode === 'bar' && ctx.api.dockWidget ? h('button', { class: 'popBtn', title: ctx.t('dockWidget'), onclick: () => ctx.api.dockWidget(id) }, ic('dock')) : null;
     return h('div', { class: 'tools' },
       extra || null,
+      pop, dock,
       langButton(ctx, id),
       h('button', { title: ctx.t('settings'), onclick: () => ctx.api.openSettings(id) }, ic('gear')),
       ctx.api.hideWidget ? h('button', { title: ctx.t('hide'), onclick: () => ctx.api.hideWidget(id) }, ic('close')) : null);
