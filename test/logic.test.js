@@ -89,4 +89,12 @@ ok('calc: scientific (degrees / radians)', () => { assert.equal(calc('sin(30)'),
 ok('calc: unclosed parentheses auto-close, implicit multiply', () => { assert.equal(calc('2×(3+4'), '14'); assert.equal(calc('2(3)'), '6'); assert.equal(calc('2π', false), String(Number((2 * Math.PI).toPrecision(12)))); });
 ok('calc: division by zero and bad input throw', () => { assert.throws(() => calc('1÷0')); assert.throws(() => calc('2++')); assert.throws(() => calc('foo(2)')); });
 ok('calc: code injection attempt is rejected, not executed', () => { assert.throws(() => calc('process.exit()')); assert.throws(() => calc('constructor')); });
+// ---- screen-edge reveal
+const E = require('../lib/edge');
+const disp = { bounds: { x: 0, y: 0, width: 1920, height: 1080 }, workArea: { x: 0, y: 0, width: 1920, height: 1040 } };
+ok('edge: right edge pixel triggers, 3px in does not', () => { assert.ok(E.atScreenEdge({ x: 1919, y: 500 }, disp, 'right')); assert.ok(E.atScreenEdge({ x: 1918, y: 500 }, disp, 'right')); assert.ok(!E.atScreenEdge({ x: 1916, y: 500 }, disp, 'right')); });
+ok('edge: left side only reacts to the left edge', () => { assert.ok(E.atScreenEdge({ x: 0, y: 10 }, disp, 'left')); assert.ok(!E.atScreenEdge({ x: 1919, y: 10 }, disp, 'left')); assert.ok(!E.atScreenEdge({ x: 0, y: 10 }, disp, 'right')); });
+ok('edge: taskbar corner (Show desktop) does not trigger', () => { assert.ok(!E.atScreenEdge({ x: 1919, y: 1060 }, disp, 'right')); });
+ok('edge: second monitor offset is respected', () => { const d2 = { bounds: { x: -1280, y: 0, width: 1280, height: 1024 }, workArea: { x: -1280, y: 0, width: 1280, height: 984 } }; assert.ok(E.atScreenEdge({ x: -1280, y: 100 }, d2, 'left')); assert.ok(E.atScreenEdge({ x: -1, y: 100 }, d2, 'right')); });
+ok('edge: insideRect with margin', () => { const r = { x: 1560, y: 0, width: 360, height: 1040 }; assert.ok(E.insideRect({ x: 1560, y: 5 }, r, 0)); assert.ok(E.insideRect({ x: 1552, y: 5 }, r, 10)); assert.ok(!E.insideRect({ x: 1540, y: 5 }, r, 10)); });
 console.log(pass + ' checks passed');

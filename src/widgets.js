@@ -26,7 +26,8 @@
     refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>', left: '<path d="M15 5l-7 7 7 7"/>', right: '<path d="M9 5l7 7-7 7"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     moon: '<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/>', pin: '<path d="M12 21s7-6.2 7-11.5A7 7 0 0 0 5 9.5C5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
-    arrow: '<path d="M12 3l5 9h-3.5v9h-3v-9H7z"/>', back: '<path d="M4 7h16M4 12h16M4 17h10"/>', chevL: '<path d="M14 5l-7 7 7 7"/>', chevR: '<path d="M10 5l7 7-7 7"/>'
+    arrow: '<path d="M12 3l5 9h-3.5v9h-3v-9H7z"/>', back: '<path d="M4 7h16M4 12h16M4 17h10"/>', chevL: '<path d="M14 5l-7 7 7 7"/>', chevR: '<path d="M10 5l7 7-7 7"/>',
+    grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>'
   };
   const ic = (n) => h('span', { html: `<svg class="ic" viewBox="0 0 24 24">${P[n]}</svg>`, style: { display: 'inline-grid', placeItems: 'center' } });
   const pad2 = (n) => String(n).padStart(2, '0');

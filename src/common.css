@@ -64,3 +64,15 @@ button, input, select, textarea, .nodrag, .scroll { -webkit-app-region: no-drag;
 body.collapsed #barScroll { display: none; }
 #handle { display: none; }
 body.collapsed #handle { display: grid; position: absolute; top: 50%; transform: translateY(-50%); inset-inline-start: 0; width: 26px; height: 78px; place-items: center; border-radius: 12px; border: 0; background: var(--card); box-shadow: 0 4px 14px #0008, inset 0 0 0 1px var(--line); color: #fff; cursor: pointer; padding: 0; --a: .95; }
+
+/* ----- bar: widget on/off panel ----- */
+.barTop button.on { background: rgba(255, 255, 255, .28); }
+.wPanel { margin: 0 auto 8px; width: 326px; box-sizing: border-box; padding: 10px; border-radius: 16px; background: rgba(14, 22, 40, .92); box-shadow: 0 6px 20px #0009, inset 0 0 0 1px rgba(255, 255, 255, .12); color: #fff; display: grid; gap: 4px; }
+.wpTitle { font-size: 12px; opacity: .7; padding: 0 6px 4px; }
+.wpRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 10px; padding: 8px 10px; background: rgba(255, 255, 255, .06); color: #fff; font: inherit; font-size: 14px; cursor: pointer; text-align: start; }
+.wpRow:hover { background: rgba(255, 255, 255, .13); }
+.wpSw { flex: none; width: 34px; height: 20px; border-radius: 10px; background: rgba(255, 255, 255, .25); position: relative; transition: background .15s; }
+.wpSw::after { content: ''; position: absolute; top: 3px; inset-inline-start: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: inset-inline-start .15s; }
+.wpRow.on .wpSw { background: #2fb36d; }
+.wpRow.on .wpSw::after { inset-inline-start: 17px; }
+.wpEmpty { display: flex; align-items: center; gap: 8px; margin: 8px auto; width: 320px; border: 1px dashed rgba(255, 255, 255, .45); border-radius: 14px; padding: 14px; background: rgba(14, 22, 40, .7); color: #fff; font: inherit; font-size: 13px; cursor: pointer; }

@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('chrono', {
   reset: () => ipcRenderer.invoke('settings:reset', id),
   onSettings: (cb) => on('settings:changed', cb),
   getState: () => ipcRenderer.invoke('state:get'),
+  version: () => ipcRenderer.invoke('app:version'),
   weather: () => ipcRenderer.invoke('weather:get'),
   refreshWeather: () => ipcRenderer.invoke('weather:refresh'),
   onWeather: (cb) => on('weather:changed', cb),

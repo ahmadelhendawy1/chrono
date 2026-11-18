@@ -4,6 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const weatherLib = require('./lib/weather');
 const prayerLib = require('./lib/prayer');
+const { atScreenEdge, insideRect } = require('./lib/edge');
 
 app.setName('Chrono');
 if (process.platform === 'win32') app.setAppUserModelId('com.ai4edutech.chrono');
@@ -49,6 +50,7 @@ const DEFAULTS = {
   widgetScale: {},           // per-widget size multiplier (0.4 - 2)
   widgetLang: {},            // per-widget language override: 'ar' | 'en' (missing = follow the app language)
   barAutoFit: true,          // shrink the bar contents so everything fits the screen height
+  edgeReveal: true,          // stay hidden; pop out when the mouse touches the screen edge (barSide)
   noteColor: 0
 };
 
@@ -104,13 +106,14 @@ const noteWins = {};     // noteId -> BrowserWindow
 let tray = null;
 let visible = true;
 let quitting = false;
+let revealed = false;     // edge-reveal: widgets currently popped out
 
 const scale = () => Math.min(2, Math.max(0.6, Number(settings.scale) || 1));
 const clampW = (v) => Math.min(2, Math.max(0.4, Number(v) || 1));
 // Free-floating windows: global size x this widget's own size.
 const scaleFor = (id) => Math.min(3, Math.max(0.3, scale() * clampW((settings.widgetScale || {})[id] || 1)));
 const enabledList = () => settings.order.filter((w) => settings.enabled[w]);
-const windowSig = () => JSON.stringify([settings.mode, settings.barSide, settings.alwaysOnTop, scale(), enabledList(), settings.locked, settings.mode === 'free' ? settings.widgetScale : null]);
+const windowSig = () => JSON.stringify([settings.mode, settings.barSide, settings.alwaysOnTop, scale(), settings.mode === 'free' ? enabledList() : null, settings.locked, settings.mode === 'free' ? settings.widgetScale : null]);
 
 function applyTop(win) {
   win.setAlwaysOnTop(!!settings.alwaysOnTop, settings.alwaysOnTop ? 'floating' : 'normal');
@@ -158,7 +161,7 @@ function createWidgetWindow(id) {
   win.removeMenu();
   win.loadFile(path.join(__dirname, 'src', 'widget.html'), { query: { w: id } });
   win.webContents.on('did-finish-load', () => win.webContents.setZoomFactor(s));
-  win.once('ready-to-show', () => { if (visible) win.show(); });
+  win.once('ready-to-show', () => { win.chronoReady = true; if (shouldShow()) showWin(win); });
   let t;
   win.on('move', () => {
     clearTimeout(t);
@@ -183,7 +186,7 @@ function createBarWindow() {
   barWin.removeMenu();
   barWin.loadFile(path.join(__dirname, 'src', 'bar.html'), { query: { side: settings.barSide } });
   barWin.webContents.on('did-finish-load', () => barWin && barWin.webContents.setZoomFactor(scale()));
-  barWin.once('ready-to-show', () => { if (visible) barWin.show(); });
+  barWin.once('ready-to-show', () => { if (!barWin) return; barWin.chronoReady = true; if (shouldShow()) showWin(barWin); });
   barWin.on('closed', () => { barWin = null; });
   applyTop(barWin);
 }
@@ -221,7 +224,7 @@ function closeAllWidgetWindows() {
 function rebuildWindows() {
   closeAllWidgetWindows();
   resetSlots();
-  if (settings.mode === 'bar') { if (enabledList().length) createBarWindow(); }
+  if (settings.mode === 'bar') createBarWindow(); // always: its header holds the widget switches
   else enabledList().forEach(createWidgetWindow);
   buildTrayMenu();
 }
@@ -238,19 +241,74 @@ function openSettings(tab) {
   settingsWin.on('closed', () => { settingsWin = null; });
 }
 
+// ---------------------------------------------------------------- show / hide + screen-edge reveal
+const edgeOn = () => !!settings.edgeReveal;
+const shouldShow = () => visible && (!edgeOn() || revealed);
+const widgetWinList = () => [barWin, ...Object.values(widgetWins)].filter((w) => w && !w.isDestroyed());
+
+function showWin(win) {
+  if (edgeOn()) win.setAlwaysOnTop(true, 'floating'); else applyTop(win);
+  win.showInactive();
+  if (edgeOn()) win.moveTop();
+}
+
+function applyShown() {
+  const show = shouldShow();
+  widgetWinList().forEach((w) => {
+    if (show) { if (w.chronoReady) showWin(w); }
+    else { applyTop(w); if (w.isVisible()) w.hide(); }
+  });
+}
+
+let edgeSince = 0; let leaveSince = 0; let wasInside = false; let pinnedUntil = 0;
+function reveal(pinMs) {
+  revealed = true; wasInside = false; leaveSince = 0; edgeSince = 0;
+  pinnedUntil = pinMs ? Date.now() + pinMs : 0;
+  applyShown(); buildTrayMenu();
+}
+function conceal() {
+  revealed = false; wasInside = false; leaveSince = 0; edgeSince = 0; pinnedUntil = 0;
+  applyShown(); buildTrayMenu();
+}
+
+function edgeTick() {
+  if (!edgeOn() || !visible) return;
+  const p = screen.getCursorScreenPoint();
+  const now = Date.now();
+  if (!revealed) {
+    if (atScreenEdge(p, screen.getPrimaryDisplay(), settings.barSide)) {
+      if (!edgeSince) edgeSince = now;
+      if (now - edgeSince >= 250) reveal(0);   // short dwell so a quick flick past the edge doesn't pop it
+    } else edgeSince = 0;
+    return;
+  }
+  const wins = widgetWinList();
+  const inside = wins.some((w) => w.isVisible() && insideRect(p, w.getBounds(), 10));
+  const busy = wins.some((w) => w.isFocused());   // typing in a note / calculator keeps it open
+  if (inside || busy || now < pinnedUntil) { if (inside) wasInside = true; leaveSince = 0; return; }
+  if (!leaveSince) leaveSince = now;
+  if (now - leaveSince >= (wasInside ? 600 : 1500)) conceal();
+}
+
 function setVisible(v) {
   visible = v;
-  const all = [barWin, ...Object.values(widgetWins), ...Object.values(noteWins)].filter(Boolean);
-  all.forEach((w) => (v ? w.showInactive() : w.hide()));
+  if (v && edgeOn()) { reveal(4000); } else applyShown();
+  Object.values(noteWins).forEach((w) => (v ? w.showInactive() : w.hide()));
   buildTrayMenu();
+}
+
+function trayClick() {
+  if (!visible) { setVisible(true); return; }
+  if (edgeOn()) { if (revealed) conceal(); else reveal(4000); return; }
+  setVisible(false);
 }
 
 // ---------------------------------------------------------------- strings for tray / notifications
 const TR = {
-  en: { show: 'Show widgets', hide: 'Hide widgets', widgets: 'Widgets', settings: 'Settings…', lock: 'Lock position', top: 'Always on top', mode: 'Layout', bar: 'Sidebar (gadget bar)', free: 'Free-floating', autostart: 'Start with Windows', quit: 'Quit Chrono', refresh: 'Refresh weather',
+  en: { show: 'Show widgets', hide: 'Hide widgets', widgets: 'Widgets', settings: 'Settings…', lock: 'Lock position', top: 'Always on top', mode: 'Layout', bar: 'Sidebar (gadget bar)', free: 'Free-floating', autostart: 'Start with Windows', quit: 'Quit Chrono', refresh: 'Refresh weather', edge: 'Pop out at screen edge', peek: 'Show now',
     names: { analog: 'Analog clock', weather: 'Weather', prayer: 'Prayer times', calendar: 'Calendar', digital: 'Digital clock', world: 'World time', notes: 'Sticky notes', calc: 'Calculator' },
     pray: { fajr: 'Fajr', sunrise: 'Sunrise', dhuhr: 'Dhuhr', asr: 'Asr', maghrib: 'Maghrib', isha: 'Isha' }, itsTime: (n) => `It is time for ${n}`, inMin: (n, m) => `${n} in ${m} minutes` },
-  ar: { show: 'إظهار الودجات', hide: 'إخفاء الودجات', widgets: 'الودجات', settings: 'الإعدادات…', lock: 'تثبيت المواضع', top: 'دائماً في المقدمة', mode: 'طريقة العرض', bar: 'شريط جانبي', free: 'ودجات حرة', autostart: 'التشغيل مع ويندوز', quit: 'إغلاق Chrono', refresh: 'تحديث الطقس',
+  ar: { show: 'إظهار الودجات', hide: 'إخفاء الودجات', widgets: 'الودجات', settings: 'الإعدادات…', lock: 'تثبيت المواضع', top: 'دائماً في المقدمة', mode: 'طريقة العرض', bar: 'شريط جانبي', free: 'ودجات حرة', autostart: 'التشغيل مع ويندوز', quit: 'إغلاق Chrono', refresh: 'تحديث الطقس', edge: 'يظهر لما الماوس يلمس طرف الشاشة', peek: 'إظهار دلوقتي',
     names: { analog: 'ساعة عقارب', weather: 'الطقس', prayer: 'مواقيت الصلاة', calendar: 'التقويم', digital: 'ساعة رقمية', world: 'التوقيت العالمي', notes: 'ملاحظات لاصقة', calc: 'آلة حاسبة' },
     pray: { fajr: 'الفجر', sunrise: 'الشروق', dhuhr: 'الظهر', asr: 'العصر', maghrib: 'المغرب', isha: 'العشاء' }, itsTime: (n) => `حان الآن موعد صلاة ${n}`, inMin: (n, m) => `باقي ${m} دقيقة على ${n}` }
 };
@@ -261,12 +319,16 @@ function buildTrayMenu() {
   const t = tr();
   const patch = (p) => applyPatch(p, 'tray');
   const menu = Menu.buildFromTemplate([
+    edgeOn() && visible ? { label: t.peek, click: () => reveal(4000) } : null,
     { label: visible ? t.hide : t.show, click: () => setVisible(!visible) },
     { type: 'separator' },
-    { label: t.widgets, submenu: WIDGET_ORDER.map((id) => ({
-      label: t.names[id], type: 'checkbox', checked: !!settings.enabled[id],
+    { label: t.widgets, enabled: false },
+    ...WIDGET_ORDER.map((id) => ({
+      label: '   ' + t.names[id], type: 'checkbox', checked: !!settings.enabled[id],
       click: (mi) => patch({ enabled: { [id]: mi.checked } })
-    })) },
+    })),
+    { type: 'separator' },
+    { label: t.edge, type: 'checkbox', checked: edgeOn(), click: (mi) => patch({ edgeReveal: mi.checked }) },
     { label: t.mode, submenu: [
       { label: t.bar, type: 'radio', checked: settings.mode === 'bar', click: () => patch({ mode: 'bar' }) },
       { label: t.free, type: 'radio', checked: settings.mode === 'free', click: () => patch({ mode: 'free' }) }
@@ -279,7 +341,7 @@ function buildTrayMenu() {
     { label: t.settings, click: () => openSettings() },
     { type: 'separator' },
     { label: t.quit, click: () => { quitting = true; app.quit(); } }
-  ]);
+  ].filter(Boolean));
   tray.setContextMenu(menu);
   tray.setToolTip('Chrono');
 }
@@ -288,7 +350,7 @@ function createTray() {
   let img = nativeImage.createFromPath(path.join(__dirname, 'src', 'assets', process.platform === 'win32' ? 'icon.ico' : 'icon.png'));
   if (process.platform !== 'win32') img = img.resize({ width: 22, height: 22 });
   tray = new Tray(img);
-  tray.on('click', () => setVisible(!visible));
+  tray.on('click', () => trayClick());
   tray.on('double-click', () => openSettings());
   buildTrayMenu();
 }
@@ -306,11 +368,14 @@ function applyPatch(patch, from) {
   const before = windowSig();
   const locBefore = JSON.stringify(settings.location);
   const prayerBefore = JSON.stringify([settings.prayer, settings.location]);
+  const edgeBefore = edgeOn();
   deepMerge(settings, patch);
   writeJson('settings', settings);
   applyAutostart();
   broadcast('settings:changed', settings, from);
   if (windowSig() !== before) rebuildWindows(); else buildTrayMenu();
+  if (edgeOn() !== edgeBefore) { if (edgeOn()) reveal(2500); else { revealed = false; applyShown(); buildTrayMenu(); } }
+  else if (edgeOn() && revealed && from === 'tray') pinnedUntil = Date.now() + 2500;  // just used the tray: give time to see the change
   if (JSON.stringify(settings.location) !== locBefore) refreshWeather();
   if (JSON.stringify([settings.prayer, settings.location]) !== prayerBefore) firedToday = {};
   return settings;
@@ -323,6 +388,7 @@ ipcMain.handle('settings:reset', (_e, from) => {
   broadcast('settings:changed', settings, from); rebuildWindows(); refreshWeather(); return settings;
 });
 ipcMain.handle('state:get', () => ({ barCollapsed: state.barCollapsed }));
+ipcMain.handle('app:version', () => app.getVersion());
 
 // notes live outside settings so typing never re-renders other widgets
 ipcMain.handle('notes:get', () => notes);
@@ -413,7 +479,7 @@ ipcMain.on('bar:collapse', (_e, collapsed) => {
 });
 
 // ---------------------------------------------------------------- lifecycle
-app.on('second-instance', () => { if (!visible) setVisible(true); else openSettings(); });
+app.on('second-instance', () => { if (!visible) setVisible(true); else if (edgeOn() && !revealed) reveal(4000); else openSettings(); });
 app.on('window-all-closed', (e) => { if (!quitting) e.preventDefault(); });
 app.on('before-quit', () => { quitting = true; });
 
@@ -421,6 +487,8 @@ app.whenReady().then(() => {
   createTray();
   applyAutostart();
   rebuildWindows();
+  if (edgeOn()) reveal(3000);   // show briefly at startup so people see where Chrono lives
+  setInterval(edgeTick, 120);
   state.popouts.forEach(createNoteWindow);
   if (weatherCache) setTimeout(() => broadcast('weather:changed', weatherCache), 800);
   refreshWeather();
@@ -428,5 +496,6 @@ app.whenReady().then(() => {
   setInterval(prayerTick, 15 * 1000);
   powerMonitor.on('resume', () => setTimeout(refreshWeather, 4000));
   screen.on('display-metrics-changed', () => { if (settings.mode === 'bar' && barWin) barWin.setBounds(barBounds(state.barCollapsed)); });
+  powerMonitor.on('lock-screen', () => { if (edgeOn() && revealed) conceal(); });
   if (process.argv.includes('--settings')) openSettings();
 });

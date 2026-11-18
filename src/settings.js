@@ -6,6 +6,7 @@
   let t = window.makeT(s.lang);
   const q = new URLSearchParams(location.search);
   let tab = q.get('tab') || 'general';
+  const appVersion = api.version ? await api.version() : '';
   const TABS = ['general', 'widgets', 'location', 'weather', 'clock', 'calendar', 'world', 'prayer', 'about'];
   const TAB_KEY = { general: 'sGeneral', widgets: 'sWidgets', location: 'sLocation', weather: 'sWeather', clock: 'sClock', calendar: 'sCalendar', world: 'sWorld', prayer: 'sPrayer', about: 'sAbout' };
   const WIDGETS = ['analog', 'weather', 'prayer', 'calendar', 'digital', 'world', 'notes', 'calc'];
@@ -54,7 +55,8 @@
         fld(t('language'), seg([['en', 'English'], ['ar', 'العربية']], s.lang, async (v) => { await patch({ lang: v }); t = window.makeT(v); document.body.dir = v === 'ar' ? 'rtl' : 'ltr'; render(); })),
         fld(t('theme'), seg([['glass', t('themeGlass')], ['dark', t('themeDark')], ['light', t('themeLight')]], s.theme, (v) => patch({ theme: v }))),
         fld(t('layout'), seg([['bar', t('layoutBar')], ['free', t('layoutFree')]], s.mode, (v) => patch({ mode: v }, true))),
-        s.mode === 'bar' ? fld(t('barSide'), seg([['right', t('right')], ['left', t('left')]], s.barSide, (v) => patch({ barSide: v }))) : null,
+        fld(t('edgeReveal'), toggle(s.edgeReveal, (v) => patch({ edgeReveal: v }, true)), t('edgeRevealHelp')),
+        (s.mode === 'bar' || s.edgeReveal) ? fld(s.mode === 'bar' ? t('barSide') : t('edgeSide'), seg([['right', t('right')], ['left', t('left')]], s.barSide, (v) => patch({ barSide: v }))) : null,
         fld(t('alwaysTop'), toggle(s.alwaysOnTop, (v) => patch({ alwaysOnTop: v }))),
         fld(t('lock'), toggle(s.locked, (v) => patch({ locked: v }))),
         fld(t('autostart'), toggle(s.autostart, (v) => patch({ autostart: v }))),
@@ -208,7 +210,7 @@
   function tabAbout() {
     return [
       h('h2', {}, 'Chrono'), h('p', { class: 'sub' }, t('aboutText')),
-      h('div', { class: 'group' }, h('div', { class: 'fld' }, h('div', { class: 'lbl' }, 'Version', h('small', {}, '1.0.0')))),
+      h('div', { class: 'group' }, h('div', { class: 'fld' }, h('div', { class: 'lbl' }, 'Version', h('small', {}, appVersion)))),
       h('p', { class: 'note' }, t('tray')), h('p', { class: 'note' }, t('dataBy'))
     ];
   }

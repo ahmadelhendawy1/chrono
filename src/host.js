@@ -14,6 +14,8 @@
   api.onNotes((l) => subs.notes.forEach((f) => f(l)));
 
   let mounted = []; // [{ cleanups }]
+  let panelOpen = false; // bar: the widget on/off panel survives re-renders
+  const ALL_WIDGETS = ['analog', 'weather', 'prayer', 'calendar', 'digital', 'world', 'notes', 'calc'];
   const LANG_WIDGETS = ['weather', 'prayer', 'calendar', 'analog', 'digital', 'world'];
   function langFor(id) { const o = (s.widgetLang || {})[id]; return o === 'ar' || o === 'en' ? o : s.lang; }
   function makeCtx(id) {
@@ -66,11 +68,23 @@
       const top = h('div', { class: 'barTop' },
         h('span', { class: 'title' }, 'Chrono'),
         h('span', { class: 'row' },
+          h('button', { class: panelOpen ? 'on' : '', title: t('widgetsMenu'), onclick: () => { panelOpen = !panelOpen; mountAll(); } }, ic('grid')),
           h('button', { title: t('settings'), onclick: () => api.openSettings() }, ic('gear')),
           h('button', { title: '', onclick: () => api.collapseBar(true) }, ic(s.barSide === 'left' ? 'chevL' : 'chevR'))));
       scroll.append(top);
+      if (panelOpen) {
+        // one switch per widget: turn any closed widget back on with a single click
+        const panel = h('div', { class: 'wPanel' }, h('div', { class: 'wpTitle' }, t('widgetsMenu')));
+        ALL_WIDGETS.forEach((id) => {
+          const on = !!s.enabled[id];
+          panel.append(h('button', { class: 'wpRow' + (on ? ' on' : ''), role: 'switch', 'aria-checked': String(on),
+            onclick: () => api.patch({ enabled: { [id]: !on } }) }, h('span', {}, t(id)), h('span', { class: 'wpSw' })));
+        });
+        scroll.append(panel);
+      }
       const inner = h('div', { id: 'barInner' });
       const order = (s.order || []).filter((id) => s.enabled[id]);
+      if (!order.length && !panelOpen) inner.append(h('button', { class: 'wpEmpty', onclick: () => { panelOpen = true; mountAll(); } }, ic('plus'), h('span', {}, t('noWidgets'))));
       order.forEach((id) => {
         const z = Math.min(1, Math.max(0.4, Number((s.widgetScale || {})[id]) || 1));
         const slot = h('div', { class: 'slot', 'data-id': id });
