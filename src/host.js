@@ -185,6 +185,40 @@
     grip.addEventListener('pointerdown', (e) => { if (s.locked) return; e.preventDefault(); dragging = true; grip.setPointerCapture(e.pointerId); document.body.classList.add('resizing'); api.resizeStart(wid); });
     const end = () => { if (!dragging) return; dragging = false; document.body.classList.remove('resizing'); api.resizeEnd(wid); };
     grip.addEventListener('pointerup', end); grip.addEventListener('pointercancel', end); grip.addEventListener('lostpointercapture', end);
+    // Move the widget: press anywhere on it and drag (past a few pixels, so plain clicks still work).
+    // The main process follows the real cursor, so it works the same at every zoom level.
+    if (!s.locked) {
+      const NO_GRAB = 'input, textarea, select, [contenteditable="true"], .rsGrip';
+      let down = null; let moving = false;
+      document.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || (e.target.closest && e.target.closest(NO_GRAB))) return;
+        const sc = e.target.closest && e.target.closest('.scroll, .aList, .iList, .hWrap, .nList');
+        if (sc && sc.scrollHeight > sc.clientHeight && e.offsetX >= sc.clientWidth - 2 && e.target === sc) return;   // its scrollbar
+        down = { x: e.screenX, y: e.screenY, id: e.pointerId, el: e.target };
+        api.dragArm();   // main notes the exact cursor + window position at the press
+      }, true);
+      document.addEventListener('pointermove', (e) => {
+        if (!down || moving) return;
+        if (Math.abs(e.screenX - down.x) + Math.abs(e.screenY - down.y) < 5) return;
+        moving = true;
+        try { down.el.setPointerCapture(down.id); } catch (err) { /* element gone */ }
+        document.body.classList.add('moving');
+        api.dragStart();
+      }, true);
+      const up = () => {
+        if (moving) {
+          api.dragEnd();
+          document.body.classList.remove('moving');
+          const swallow = (ev) => { ev.stopPropagation(); ev.preventDefault(); };   // a drag is not a click
+          window.addEventListener('click', swallow, true);
+          setTimeout(() => window.removeEventListener('click', swallow, true), 0);
+        }
+        down = null; moving = false;
+      };
+      document.addEventListener('pointerup', up, true);
+      document.addEventListener('pointercancel', up, true);
+      window.addEventListener('blur', () => { if (moving) up(); });
+    }
     const report = () => api.resize(root.offsetWidth, root.offsetHeight);
     new ResizeObserver(report).observe(root);
     report();

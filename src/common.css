@@ -31,7 +31,6 @@ body.bar { overflow: hidden; }
 .card {
   position: relative; border-radius: 20px; overflow: hidden; background: var(--card); color: var(--txt);
   box-shadow: 0 10px 30px rgba(0, 0, 0, .42), inset 0 0 0 1px var(--line);
-  -webkit-app-region: drag;
 }
 .card::before { /* glossy sheen like the old HD widgets */
   content: ''; position: absolute; inset: 0 0 52% 0; pointer-events: none; z-index: 0;
@@ -39,7 +38,11 @@ body.bar { overflow: hidden; }
 }
 body[data-theme='light'] .card::before { background: linear-gradient(180deg, rgba(255, 255, 255, .7), rgba(255, 255, 255, 0)); }
 .card > * { position: relative; z-index: 1; }
-body.locked .card, body.bar .card { -webkit-app-region: no-drag; }
+/* Widgets are moved by our own drag code (host.js), not by Windows drag regions: those swallow hover, wheel and clicks. */
+body[data-page='widget']:not(.locked) .card, body[data-page='widget']:not(.locked) .holder { cursor: grab; }
+body.moving, body.moving * { cursor: grabbing !important; }
+body[data-page='widget'] .card button, body[data-page='widget'] .card input, body[data-page='widget'] .card select, body[data-page='widget'] .card textarea { cursor: pointer; }
+body[data-page='widget'] .card input[type=text], body[data-page='widget'] .card input:not([type]), body[data-page='widget'] .card textarea { cursor: text; }
 button, input, select, textarea, .nodrag, .scroll { -webkit-app-region: no-drag; }
 
 .tools { position: absolute; top: 8px; z-index: 5; display: flex; gap: 4px; opacity: 0; transition: opacity .15s; inset-inline-end: 8px; }
@@ -94,8 +97,9 @@ body.bar.side-left .barTop { margin-right: auto; margin-left: 0; }
 .wPanel { min-width: 0; }
 
 /* ----- floating widget: corner resize grip ----- */
-.rsGrip { position: fixed; right: 2px; bottom: 2px; width: 20px; height: 20px; z-index: 50; cursor: nwse-resize; color: rgba(255, 255, 255, .9); background: rgba(0, 0, 0, .45); border-radius: 6px 2px 10px 2px; display: grid; place-items: center; opacity: 0; transition: opacity .15s; }
-.rsGrip svg { width: 14px; height: 14px; }
-body:hover .rsGrip, body.resizing .rsGrip { opacity: 1; }
+.rsGrip { position: fixed; right: 0; bottom: 0; width: 26px; height: 26px; z-index: 50; cursor: nwse-resize; color: #fff; background: rgba(0, 0, 0, .55); border-radius: 10px 2px 12px 2px; display: grid; place-items: center; opacity: .45; transition: opacity .15s, transform .15s; box-shadow: 0 0 0 1px rgba(255, 255, 255, .25) inset; }
+.rsGrip svg { width: 16px; height: 16px; }
+body:hover .rsGrip { opacity: .9; }
+.rsGrip:hover, body.resizing .rsGrip { opacity: 1; transform: scale(1.12); }
 body.locked .rsGrip { display: none; }
 body.resizing, body.resizing * { cursor: nwse-resize !important; }

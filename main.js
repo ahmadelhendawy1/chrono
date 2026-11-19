@@ -602,6 +602,25 @@ ipcMain.on('ui:resize-start', (e, id) => {
     }
   }, 16);
 });
+// Move a floating widget: follow the real cursor until the button is released.
+let moveTimer = null; let moveArm = null;
+ipcMain.on('ui:drag-arm', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender); if (!win) return;
+  moveArm = { win, b: win.getBounds(), start: screen.getCursorScreenPoint() };
+});
+ipcMain.on('ui:drag-start', (e) => {
+  const win = BrowserWindow.fromWebContents(e.sender); if (!win || win === barWin || settings.locked) return;
+  const armed = moveArm && moveArm.win === win ? moveArm : null;
+  const b = armed ? armed.b : win.getBounds(); const start = armed ? armed.start : screen.getCursorScreenPoint();
+  clearInterval(moveTimer);
+  const stopAt = Date.now() + 60000;   // safety net if the release never arrives
+  moveTimer = setInterval(() => {
+    if (win.isDestroyed() || Date.now() > stopAt) { clearInterval(moveTimer); return; }
+    const p = screen.getCursorScreenPoint();
+    win.setBounds({ x: b.x + p.x - start.x, y: b.y + p.y - start.y, width: b.width, height: b.height });   // keep the size fixed on scaled displays
+  }, 12);
+});
+ipcMain.on('ui:drag-end', () => { clearInterval(moveTimer); moveTimer = null; });
 ipcMain.on('ui:resize-end', (_e, id) => {
   clearInterval(gripTimer); gripTimer = null;
   applyPatch({ widgetScale: { [id]: (settings.widgetScale || {})[id] || 1 } }, 'grip');
