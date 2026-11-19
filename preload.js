@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld('chrono', {
   dockWidget: (wid) => ipcRenderer.send('ui:dock-widget', wid),
   resizeStart: (wid) => ipcRenderer.send('ui:resize-start', wid),
   dragArm: () => ipcRenderer.send('ui:drag-arm'),
+  barWidth: (w) => ipcRenderer.send('ui:bar-width', w),
   dragStart: () => ipcRenderer.send('ui:drag-start'),
   dragEnd: () => ipcRenderer.send('ui:drag-end'),
   resizeEnd: (wid) => ipcRenderer.send('ui:resize-end', wid),

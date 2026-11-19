@@ -10,7 +10,7 @@ fs.writeFileSync(path.join(dir, 'chrono-settings.json'), JSON.stringify({ mode, 
   enabled: { analog: true, weather: true, prayer: true, calendar: false, digital: false, world: false, alarm: false, notes: false, calc: false } }));
 
 const logs = []; const results = []; let fails = 0;
-const check = (name, cond) => { results.push((cond ? 'ok   ' : 'FAIL ') + name); if (!cond) fails++; };
+const check = (name, cond) => { results.push((cond ? 'ok   ' : 'FAIL ') + name); console.log('STEP', cond ? 'ok' : 'FAIL', name); if (!cond) fails++; };
 app.on('web-contents-created', (_e, wc) => wc.on('console-message', (_ev, level, msg) => { if (level >= 2) logs.push(msg); }));
 
 let cursor = { x: 400, y: 400 };
@@ -22,7 +22,8 @@ app.whenReady().then(async () => {
   const chrono = () => BrowserWindow.getAllWindows().filter((w) => /widget\.html|bar\.html/.test(w.webContents.getURL()));
   const anyVisible = () => chrono().some((w) => w.isVisible());
   const allVisible = () => chrono().length > 0 && chrono().every((w) => w.isVisible());
-  const shot = async (name) => { for (const w of chrono()) { const img = await w.webContents.capturePage(); fs.writeFileSync(path.join(out, name + '-' + w.id + '.png'), img.toPNG()); } };
+  const TO = (p, ms, tag) => { let done = false; p = Promise.resolve(p).then((v) => { done = true; return v; }); return Promise.race([p, new Promise((r) => setTimeout(() => { if (done) return r(null); console.log('TIMEOUT', tag, JSON.stringify(BrowserWindow.getAllWindows().filter(w=>!w.isDestroyed()&&/bar\.html/.test(w.webContents.getURL())).map(w=>[w.getBounds(), w.isVisible()])), JSON.stringify(cursor)); r(null); }, ms))]); };
+  const shot = async (name) => { for (const w of chrono()) { const img = await TO(w.webContents.capturePage(), 5000, 'capture ' + name); if (img) fs.writeFileSync(path.join(out, name + '-' + w.id + '.png'), img.toPNG()); } };
 
   await sleep(1500); check('startup: shown briefly so people see it', allVisible());
   await sleep(4000); check('startup: hides again when the mouse is elsewhere', !anyVisible());
@@ -38,35 +39,38 @@ app.whenReady().then(async () => {
   if (mode === 'bar') {
     cursor = { x: d.bounds.width - 1, y: 200 }; await sleep(600);
     const bar = chrono()[0]; const barId = bar.webContents.id;
-    cursor = { x: bar.getBounds().x + 60, y: 40 };
-    await bar.webContents.executeJavaScript("document.querySelector('.barTop button:not(.pinBtn)').click()"); await sleep(500);
-    const rows = await bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].map(b => b.textContent + ':' + b.classList.contains('on')).join(',')");
+    // keep the simulated mouse over the sidebar even when it auto-shrinks around fewer/more widgets
+    const follow = setInterval(() => { if (!bar.isDestroyed()) { const bb = bar.getBounds(); cursor = { x: bb.x + 20, y: 40 }; } }, 40);
+    cursor = { x: bar.getBounds().x + 20, y: 40 };
+    await TO(bar.webContents.executeJavaScript("document.querySelector('.barTop button:not(.pinBtn):not(.sizeBtn)').click()"), 5000, "document.querySelector('.barTop button:not(.pinBt"); await sleep(500);
+    const rows = await TO(bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].map(b => b.textContent + ':' + b.classList.contains('on')).join(',')"), 5000, "[...document.querySelectorAll('.wpRow')].map(b =>");
     check('widgets panel lists all 9 with on/off state', rows.split(',').length === 9 && /Calendar:false/.test(rows) && /Weather:true/.test(rows));
-    await bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].find(b => b.textContent.startsWith('Calendar')).click()"); await sleep(800);
+    await TO(bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].find(b => b.textContent.startsWith('Calendar')).click()"), 5000, "[...document.querySelectorAll('.wpRow')].find(b ="); await sleep(800);
     const s1 = JSON.parse(fs.readFileSync(path.join(dir, 'chrono-settings.json'), 'utf8'));
     check('one click turns a closed widget back on', s1.enabled.calendar === true);
-    check('bar was not rebuilt (panel stays open)', chrono()[0].webContents.id === barId && await bar.webContents.executeJavaScript("!!document.querySelector('.wPanel') && !!document.querySelector('.slot[data-id=calendar]')"));
+    check('bar was not rebuilt (panel stays open)', chrono()[0].webContents.id === barId && await TO(bar.webContents.executeJavaScript("!!document.querySelector('.wPanel') && !!document.querySelector('.slot[data-id=calendar]')"), 5000, "!!document.querySelector('.wPanel') && !!document"));
     await shot('panel');
     // close weather with its X, then bring it back from the panel
-    await bar.webContents.executeJavaScript("document.querySelector('.slot[data-id=weather] .tools button:last-child').click()"); await sleep(700);
-    check('X closes the weather widget', await bar.webContents.executeJavaScript("!document.querySelector('.slot[data-id=weather]')"));
-    await bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].find(b => b.textContent.startsWith('Weather')).click()"); await sleep(800);
-    check('weather comes back with its switch (no reset)', await bar.webContents.executeJavaScript("!!document.querySelector('.slot[data-id=weather]')"));
+    await TO(bar.webContents.executeJavaScript("document.querySelector('.slot[data-id=weather] .tools button:last-child').click()"), 5000, "document.querySelector('.slot[data-id=weather] .t"); await sleep(700);
+    check('X closes the weather widget', await TO(bar.webContents.executeJavaScript("!document.querySelector('.slot[data-id=weather]')"), 5000, "!document.querySelector('.slot[data-id=weather]')"));
+    await TO(bar.webContents.executeJavaScript("[...document.querySelectorAll('.wpRow')].find(b => b.textContent.startsWith('Weather')).click()"), 5000, "[...document.querySelectorAll('.wpRow')].find(b ="); await sleep(800);
+    check('weather comes back with its switch (no reset)', await TO(bar.webContents.executeJavaScript("!!document.querySelector('.slot[data-id=weather]')"), 5000, "!!document.querySelector('.slot[data-id=weather]'"));
     // all off -> empty hint, bar still there
-    await bar.webContents.executeJavaScript("window.chrono.patch({ enabled: { analog:false, weather:false, prayer:false, calendar:false, alarm:false } })"); await sleep(700);
-    await bar.webContents.executeJavaScript("document.querySelector('.barTop button:not(.pinBtn)').click()"); await sleep(400);
-    check('all widgets off: bar + hint remain so they can be turned back on', chrono().length === 1 && await bar.webContents.executeJavaScript("!!document.querySelector('.wpEmpty')"));
+    await TO(bar.webContents.executeJavaScript("window.chrono.patch({ enabled: { analog:false, weather:false, prayer:false, calendar:false, alarm:false } })"), 5000, 'window.chrono.patch({ enabled: { analog:false, we'); await sleep(700);
+    await TO(bar.webContents.executeJavaScript("document.querySelector('.barTop button:not(.pinBtn):not(.sizeBtn)').click()"), 5000, "document.querySelector('.barTop button:not(.pinBt"); await sleep(400);
+    check('all widgets off: bar + hint remain so they can be turned back on', chrono().length === 1 && await TO(bar.webContents.executeJavaScript("!!document.querySelector('.wpEmpty')"), 5000, '!!document.querySelector(\'.wpEmpty\')"'));
     await shot('empty');
-    await bar.webContents.executeJavaScript("window.chrono.patch({ enabled: { weather: true, prayer: true } })"); await sleep(600);
+    await TO(bar.webContents.executeJavaScript("window.chrono.patch({ enabled: { weather: true, prayer: true } })"), 5000, 'window.chrono.patch({ enabled: { weather: true, p'); await sleep(600);
+    clearInterval(follow);
   }
   if (mode === 'bar') {
     const bar = chrono()[0]; const wb = bar.getBounds();
     check('bar touches the right screen edge', wb.x + wb.width === d.workArea.x + d.workArea.width);
-    const gap = await bar.webContents.executeJavaScript("(() => { const W = window.innerWidth; return [...document.querySelectorAll('.slot > *')].map(e => Math.round(W - e.getBoundingClientRect().right)); })()");
+    const gap = await TO(bar.webContents.executeJavaScript("(() => { const W = window.innerWidth; return [...document.querySelectorAll('.slot > *')].map(e => Math.round(W - e.getBoundingClientRect().right)); })()"), 5000, '(() => { const W = window.innerWidth; return [...');
     check('cards sit flush on the right (no gap): ' + JSON.stringify(gap), gap.length > 0 && gap.every((g) => g === 0));
-    check('no visible scrollbar strip', await bar.webContents.executeJavaScript("document.getElementById('barScroll').offsetWidth === document.getElementById('barScroll').clientWidth"));
+    check('no visible scrollbar strip', await TO(bar.webContents.executeJavaScript("document.getElementById('barScroll').offsetWidth === document.getElementById('barScroll').clientWidth"), 5000, "document.getElementById('barScroll').offsetWidth "));
     // pin button: click it -> pinned, stays visible after the mouse leaves
-    await bar.webContents.executeJavaScript("document.querySelector('.pinBtn').click()"); await sleep(900);
+    await TO(bar.webContents.executeJavaScript("document.querySelector('.pinBtn').click()"), 5000, 'document.querySelector(\'.pinBtn\').click()"'); await sleep(900);
   } else {
     await chrono()[0].webContents.executeJavaScript("window.chrono.patch({ pinned: true })"); await sleep(900);
   }

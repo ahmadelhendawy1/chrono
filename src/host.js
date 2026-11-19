@@ -74,6 +74,7 @@
         h('span', { class: 'title' }, 'Chrono'),
         h('span', { class: 'row' },
           h('button', { class: 'pinBtn' + (s.pinned !== false ? ' on' : ''), title: s.pinned !== false ? t('unpinTip') : t('pinTip'), onclick: () => api.patch({ pinned: s.pinned === false }) }, ic('pushpin')),
+          h('button', { class: 'sizeBtn', title: t('barSize') + ': ' + t('size.' + (s.barSize || 'large')) + ' – ' + t('barSizeTip'), onclick: () => api.patch({ barSize: BAR_NEXT[s.barSize || 'large'] }) }, t('sizeLetter.' + (s.barSize || 'large'))),
           h('button', { class: panelOpen ? 'on' : '', title: t('widgetsMenu'), onclick: () => { panelOpen = !panelOpen; mountAll(); } }, ic('grid')),
           h('button', { title: t('settings'), onclick: () => api.openSettings() }, ic('gear')),
           h('button', { title: '', onclick: () => api.collapseBar(true) }, ic(s.barSide === 'left' ? 'chevL' : 'chevR'))));
@@ -91,10 +92,9 @@
       const inner = h('div', { id: 'barInner' });
       const order = (s.order || []).filter((id) => s.enabled[id] && !(s.detached || {})[id]);
       if (!order.length && !panelOpen) inner.append(h('button', { class: 'wpEmpty', onclick: () => { panelOpen = true; mountAll(); } }, ic('plus'), h('span', {}, t('noWidgets'))));
+      // Windows 7 style: every docked widget shares one column width (per-widget sizes only apply when floating)
       order.forEach((id) => {
-        const z = Math.min(1, Math.max(0.4, Number((s.widgetScale || {})[id]) || 1));
         const slot = h('div', { class: 'slot', 'data-id': id });
-        if (z !== 1) slot.style.zoom = String(z);
         inner.append(slot); mountWidget(id, slot);
       });
       scroll.append(inner);
@@ -107,29 +107,32 @@
 
   // Bar: if everything is taller than the screen, shrink the whole column so it fits (no hidden widgets).
   let fitObserver = null; let fitHandler = null;
+  const BAR_SIZES = { small: 0.72, medium: 0.86, large: 1 };
+  const BAR_NEXT = { small: 'medium', medium: 'large', large: 'small' };
   function fitBar(inner, scroll) {
     if (fitObserver) fitObserver.disconnect();
     if (fitHandler) window.removeEventListener('resize', fitHandler);
     inner.style.zoom = '1';
     let cur = 1;
     // keep the "Chrono" header (and the widgets panel) exactly as wide as the widget column under it
+    const sizeZ = BAR_SIZES[s.barSize] || 1;
     const alignTop = () => {
-      const cards = [...inner.querySelectorAll('.slot > *')];
-      const w = cards.length ? Math.max(...cards.map((c) => c.getBoundingClientRect().width)) : 0;
-      const width = Math.round(Math.max(w || 340 * cur, 200));
+      const topEl = scroll.querySelector('.barTop');
+      let need = 200;   // the header never gets narrower than its own title + buttons
+      if (topEl) { need = [...topEl.children].reduce((sum, c) => sum + c.scrollWidth, 0) + 12; }
+      const width = Math.round(Math.max(340 * cur, need));
       scroll.querySelectorAll('.barTop, .wPanel').forEach((el) => { el.style.width = width + 'px'; el.style.boxSizing = 'border-box'; });
+      if (api.barWidth) api.barWidth(width);   // the window shrinks to hug the column
     };
-    if (!s.barAutoFit) {
-      const ro = new ResizeObserver(() => requestAnimationFrame(alignTop)); ro.observe(inner);
-      fitObserver = ro; alignTop(); return;
-    }
     const apply = () => {
+      // one zoom for the whole column: the chosen sidebar size, shrunk further only when it would not fit the screen
       const natural = inner.getBoundingClientRect().height / cur;
       const topEl = scroll.firstChild;
       const top = topEl ? topEl.getBoundingClientRect().height + 8 : 40;
       const avail = window.innerHeight - top - 8;
-      const z = natural > avail && natural > 0 ? Math.max(0.35, avail / natural) : 1;
-      if (Math.abs(z - cur) > 0.005) { cur = z; inner.style.zoom = String(z); }
+      let z = sizeZ;
+      if (s.barAutoFit && natural > 0 && natural * z > avail) z = Math.max(0.35, avail / natural);
+      if (Math.abs(z - cur) > 0.005 || inner.style.zoom === '1') { cur = z; inner.style.zoom = String(z); }
       alignTop();
     };
     let raf = 0;
@@ -148,6 +151,17 @@
     if (!e.ctrlKey && !onGrip) return;
     e.preventDefault();
     const slotEl = e.target.closest ? e.target.closest('.slot') : null;
+    if (page === 'bar') {   // in the sidebar, Ctrl + wheel changes the size of the whole column
+      clearTimeout(wheelTimer);
+      const dir = e.deltaY < 0 ? 1 : -1;
+      wheelTimer = setTimeout(() => {
+        const order = ['small', 'medium', 'large'];
+        const i = order.indexOf(s.barSize || 'large');
+        const next = order[Math.min(2, Math.max(0, i + dir))];
+        if (next !== (s.barSize || 'large')) api.patch({ barSize: next });
+      }, 120);
+      return;
+    }
     const id = page === 'widget' ? q.get('w') : (slotEl ? slotEl.dataset.id : null);
     if (!id) return;
     if (wheelId !== id) { wheelAcc = 0; wheelId = id; }

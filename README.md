@@ -17,6 +17,7 @@ Download **Chrono-Setup-x.y.z.exe** from the [latest release](https://github.com
 Windows may show a SmartScreen warning because the installer is not code-signed: click **More info → Run anyway**.
 
 ## Use
+- **Windows 7 style sidebar (new in 1.4.3):** every widget in the sidebar shares one width and lines up flush to the screen edge. Pick Small / Medium / Large with the S·M·L button in the sidebar header (or Ctrl + wheel over the sidebar). When you add widgets and they no longer fit the screen height, the whole column shrinks evenly; remove some and it grows back. The sidebar window hugs the column, so the desktop beside it stays clickable.
 - **Pop a widget out (new in 1.4.1):** every widget in the sidebar has a pop-out button: that one widget floats on the desktop while the others stay in the sidebar, which closes the gap. The dock button on the floating widget puts it back.
 - **Resize floating widgets (new in 1.4.1):** drag the grip in the bottom-right corner outward or inward, or scroll the mouse wheel over it (Ctrl + wheel anywhere on the widget works too).
 - **Alarm clock (new in 1.4):** phone-style alarms with repeat days, a label, built-in tones or your own music file, rising volume and snooze. When an alarm goes off, a banner pops up above the clock in the taskbar (Stop / Snooze) and a Windows notification appears. Alarms ring as long as Chrono is running, even when the widget is hidden.

@@ -60,6 +60,7 @@
         fld(t('alwaysTop'), toggle(s.alwaysOnTop, (v) => patch({ alwaysOnTop: v }))),
         fld(t('lock'), toggle(s.locked, (v) => patch({ locked: v }))),
         fld(t('autostart'), toggle(s.autostart, (v) => patch({ autostart: v }))),
+        s.mode === 'bar' ? fld(t('barSize'), seg([['small', t('size.small')], ['medium', t('size.medium')], ['large', t('size.large')]], s.barSize || 'large', (v) => patch({ barSize: v })), t('barSizeHelp')) : null,
         s.mode === 'bar' ? fld(t('barFit'), toggle(s.barAutoFit, (v) => patch({ barAutoFit: v }))) : null,
         fld(t('hour12'), toggle(s.hour12, (v) => patch({ hour12: v }))),
         fld(t('opacity'), slider(25, 100, 5, Math.round(s.opacity * 100), (v) => v + '%', (v) => patch({ opacity: v / 100 }))),

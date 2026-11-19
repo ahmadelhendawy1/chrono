@@ -103,3 +103,4 @@ body:hover .rsGrip { opacity: .9; }
 .rsGrip:hover, body.resizing .rsGrip { opacity: 1; transform: scale(1.12); }
 body.locked .rsGrip { display: none; }
 body.resizing, body.resizing * { cursor: nwse-resize !important; }
+.barTop button.sizeBtn { font: inherit; font-size: 12px; font-weight: 800; min-width: 28px; }

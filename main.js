@@ -51,6 +51,7 @@ const DEFAULTS = {
   widgetScale: {},           // per-widget size multiplier (0.4 - 2)
   widgetLang: {},            // per-widget language override: 'ar' | 'en' (missing = follow the app language)
   barAutoFit: true,          // shrink the bar contents so everything fits the screen height
+  barSize: 'large',          // sidebar column size: small | medium | large (every docked widget shares it)
   detached: {},              // bar mode: widgets popped out of the sidebar to float on the desktop
   pinned: true,              // pinned = always shown; unpinned = hidden, pops out when the mouse touches the screen edge (barSide)
   noteColor: 0
@@ -184,15 +185,19 @@ function createWidgetWindow(id) {
   applyTop(win);
 }
 
+const BAR_SIZES = { small: 0.72, medium: 0.86, large: 1 };
+let barColW = null;   // actual column width (CSS px) reported by the sidebar after it fits itself
 function barBounds(collapsed) {
   const wa = screen.getPrimaryDisplay().workArea; const s = scale();
-  const fullW = Math.round((BAR_INNER_W + BAR_PAD) * s);   // padding only on the inner side: cards sit flush on the screen edge
+  const colW = barColW || BAR_INNER_W * (BAR_SIZES[settings.barSize] || 1);
+  const fullW = Math.round((colW + BAR_PAD) * s);   // the window hugs the column, so the desktop beside it stays clickable   // padding only on the inner side: cards sit flush on the screen edge
   const w = collapsed ? Math.round(BAR_COLLAPSED_W * s) : fullW;
   const x = settings.barSide === 'left' ? wa.x : wa.x + wa.width - w;
   return { x, y: wa.y, width: w, height: wa.height };
 }
 
 function createBarWindow() {
+  barColW = null;
   const b = barBounds(state.barCollapsed);
   barWin = new BrowserWindow(baseOpts(Object.assign({}, b, { alwaysOnTop: !!settings.alwaysOnTop })));
   barWin.removeMenu();
@@ -569,6 +574,13 @@ ipcMain.on('ui:size', (e, w, h) => {
   const nw = Math.round(w * s); const nh = Math.round(h * s);
   const [cw, ch] = win.getContentSize();
   if (Math.abs(cw - nw) > 1 || Math.abs(ch - nh) > 1) win.setContentSize(nw, nh);
+});
+ipcMain.on('ui:bar-width', (e, w) => {
+  if (!barWin || BrowserWindow.fromWebContents(e.sender) !== barWin || !(w > 0)) return;
+  const next = Math.round(Math.min(BAR_INNER_W, Math.max(200, w)));
+  if (next === barColW) return;
+  barColW = next;
+  if (!state.barCollapsed) barWin.setBounds(barBounds(false));
 });
 ipcMain.on('ui:detach-widget', (_e, id, at) => {
   if (!WIDGET_ORDER.includes(id)) return;
